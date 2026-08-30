@@ -1,0 +1,404 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "Shift Viewer",
+  "@appTitle": {
+    "description": "Application name, shown in the app bar and on the login screen."
+  },
+
+  "signInSubtitle": "Sign in to view your shift schedule",
+  "signIn": "Sign in",
+  "signingIn": "Redirecting…",
+  "loginUnsupported": "Login is not supported on this platform.",
+  "connectionSettings": "Connection settings",
+  "signOut": "Sign out",
+
+  "navMonth": "Month",
+  "navWeek": "Week",
+  "navDay": "Day",
+  "navWishes": "Wishes",
+  "@navWishes": {
+    "description": "Bottom navigation label for the shift wish planner."
+  },
+
+  "openDayView": "Open day view",
+  "today": "Today",
+  "refresh": "Refresh",
+  "settings": "Settings",
+  "previous": "Previous",
+  "next": "Next",
+  "save": "Save",
+
+  "employee": "Employee",
+  "allEmployees": "All employees",
+
+  "weekTitle": "{month} {year} · W{week}",
+  "@weekTitle": {
+    "description": "Calendar title for a week that stays inside one month.",
+    "placeholders": {
+      "month": { "type": "String" },
+      "year": { "type": "String" },
+      "week": { "type": "int" }
+    }
+  },
+  "weekSpanTitle": "{from} – {to} {year}",
+  "@weekSpanTitle": {
+    "description": "Calendar title for a week spanning two months.",
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" },
+      "year": { "type": "String" }
+    }
+  },
+
+  "notConfigured": "Not configured. Open settings to set the API URL.",
+  "errorWithCode": "{message} ({code})",
+  "@errorWithCode": {
+    "description": "An API failure with its HTTP status code.",
+    "placeholders": {
+      "message": { "type": "String" },
+      "code": { "type": "int" }
+    }
+  },
+
+  "noShiftsScheduled": "No shifts scheduled",
+  "workingCount": "{count, plural, =1{1 working} other{{count} working}}",
+  "@workingCount": {
+    "description": "How many employees are rostered on the selected day.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "offNoShift": "Off — no shift",
+  "yourShift": "YOUR SHIFT",
+  "noWorkstation": "No workstation assigned",
+  "offNotScheduled": "Off / not scheduled",
+  "unassignedWorkstation": "Unassigned",
+  "absent": "absent",
+  "resizeDayOverview": "Drag to resize the day overview · double tap to reset",
+
+  "shiftWish": "Shift wish",
+  "addShiftWish": "Add shift wish",
+  "wishFor": "Wish: {shift}",
+  "@wishFor": {
+    "description": "Chip label showing the shift the employee wished for.",
+    "placeholders": {
+      "shift": { "type": "String" }
+    }
+  },
+  "unknownShift": "unknown shift",
+  "wishDisclaimer": "The planner rewards fulfilling a wish, but never guarantees it.",
+  "notScheduledOnWeekday": "Not scheduled on this weekday",
+  "removeWish": "Remove wish",
+  "removeWishCount": "{count, plural, =1{Remove wish} other{Remove {count} wishes}}",
+  "@removeWishCount": {
+    "description": "Withdraws every wish the current scope covers.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "scopeDay": "This day",
+  "scopeSelection": "{count} days",
+  "@scopeSelection": {
+    "description": "Scope button for the days the user painted in the calendar.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "scopeWeek": "This week",
+  "scopeMonth": "This month",
+  "dayRange": "{from} – {to}",
+  "@dayRange": {
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "shiftRunsOnDays": "Runs on {matching} of {total} days",
+  "@shiftRunsOnDays": {
+    "description": "How much of a multi-day scope a shift can actually cover.",
+    "placeholders": {
+      "matching": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+
+  "wishBatchPlaced": "{count, plural, =0{No day to wish for} =1{Wish placed: {shift}} other{{shift} wished for {count} days}}",
+  "@wishBatchPlaced": {
+    "description": "Result of placing a wish across one or more days.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "shift": { "type": "String" }
+    }
+  },
+  "wishBatchSkipped": "{count, plural, =1{1 day skipped, the shift does not run then} other{{count} days skipped, the shift does not run then}}",
+  "@wishBatchSkipped": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "wishBatchRemoved": "{count, plural, =0{No wish to remove} =1{Wish removed} other{{count} wishes removed}}",
+  "@wishBatchRemoved": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "wishSelectEmployeeFirst": "Select an employee first.",
+  "wishPickEmployeeFirst": "Pick an employee before placing a shift wish.",
+  "wishNoShiftsAvailable": "No shifts available to wish for.",
+  "wishConflict": "A wish for this day already exists — reload and try again.",
+
+  "wishModeOpen": "Wishes open",
+  "@wishModeOpen": {
+    "description": "Status chip: the tenant accepts wishes for any date."
+  },
+  "wishModeRange": "Wishes {from} – {to}",
+  "@wishModeRange": {
+    "description": "Status chip: wishes are accepted only inside this window.",
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "wishModeDisabled": "Wishes deactivated",
+  "@wishModeDisabled": {
+    "description": "Status chip: the tenant accepts no wishes at all."
+  },
+  "wishWindowOpenDetail": "Shift wishes can be placed for any date.",
+  "wishWindowRangeDetail": "Shift wishes can only be placed for {from} – {to}.",
+  "@wishWindowRangeDetail": {
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "wishWindowClosedDetail": "Shift wishes are deactivated right now.",
+  "wishOutsideWindow": "This day is outside the wish window.",
+  "wishBatchBlocked": "{count, plural, =1{1 day outside the wish window} other{{count} days outside the wish window}}",
+  "@wishBatchBlocked": {
+    "description": "How many days a bulk edit had to leave alone because the wish window does not cover them.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "wishPlannerHint": "Tap a day to wish for a shift · long press and drag across days to plan several at once.",
+  "wishPlannerEmpty": "No wishes in this month yet",
+  "wishPlannerCount": "{count, plural, =0{No wishes} =1{1 wish} other{{count} wishes}}",
+  "@wishPlannerCount": {
+    "description": "Number of wishes the employee placed in the visible month.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "wishPlannerPickEmployee": "Pick an employee to plan their shift wishes.",
+
+  "addToCalendar": "Add to calendar",
+  "addToGoogleCalendar": "Add to Google Calendar",
+  "@addToGoogleCalendar": {
+    "description": "Sends one confirmed shift to Google Calendar's new-event form."
+  },
+  "calendarExportTitle": "Add shifts to calendar",
+  "calendarExportSubtitle": "{who} · {from} – {to}",
+  "@calendarExportSubtitle": {
+    "description": "Whose shifts are being exported, and over which dates.",
+    "placeholders": {
+      "who": { "type": "String" },
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "calendarExportCount": "{count, plural, =0{No confirmed shifts} =1{1 confirmed shift} other{{count} confirmed shifts}}",
+  "@calendarExportCount": {
+    "description": "How many shifts the export covers.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "calendarExportAbsences": "{count, plural, =1{1 absence left out} other{{count} absences left out}}",
+  "@calendarExportAbsences": {
+    "description": "Rostered days the employee is not present are not appointments, so they are skipped.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "calendarExportEmpty": "No confirmed shifts in this range.",
+  "calendarExportMore": "+{count} more",
+  "@calendarExportMore": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "calendarShareIcs": "Share calendar file",
+  "calendarDownloadIcs": "Download calendar file",
+  "calendarIcsHint": "Open the file with Google Calendar to import every shift at once.",
+  "calendarIcsHintWeb": "Import it in Google Calendar under Settings ▸ Import & export.",
+  "calendarGoogleHint": "Opens the Google Calendar app, or its website.",
+  "calendarOpenedGoogle": "Opened in Google Calendar.",
+  "calendarIcsReady": "{count, plural, =1{1 shift exported to {file}} other{{count} shifts exported to {file}}}",
+  "@calendarIcsReady": {
+    "description": "Confirmation that the .ics file was handed to the platform.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "file": { "type": "String" }
+    }
+  },
+  "calendarExportDismissed": "Nothing was exported.",
+  "calendarExportFailed": "Could not export: {reason}",
+  "@calendarExportFailed": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+  "calendarAllDay": "All day",
+
+  "sectionServer": "Server",
+  "apiBaseUrl": "API base URL",
+  "fieldRequired": "Required",
+  "enterValidUrl": "Enter a valid URL",
+  "sectionSignIn": "Sign-in (OIDC · PKCE)",
+  "issuerUrl": "Issuer / realm URL",
+  "clientId": "Client ID",
+  "clientIdHelper": "Same client as the API gateway · PKCE (S256)",
+  "redirectUri": "Redirect URI",
+  "sectionManualLogin": "Manual login (fallback)",
+  "username": "Username",
+  "password": "Password",
+  "bearerToken": "Bearer token (optional)",
+  "bearerTokenHelper": "Used instead of username/password when set",
+  "sectionCalendarScope": "Calendar scope",
+  "employeeIdOptional": "Employee ID (optional)",
+  "employeeIdHelper": "Show only this employee's roster; leave empty for all",
+  "testConnection": "Test connection",
+  "connectionSuccessful": "Connection successful",
+  "connectionFailed": "Failed: {reason}",
+  "@connectionFailed": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+
+  "sectionAppearance": "Language",
+  "language": "Language",
+  "languageSystem": "System default",
+  "languageEnglish": "English",
+  "languageGerman": "German",
+
+  "shiftInsights": "Shift details",
+  "employeeInsights": "Employee",
+  "showShiftDetails": "Show shift details and statistics",
+  "showEmployeeDetails": "Show this employee's details",
+  "analysisUnavailable": "Server statistics are unavailable — the numbers below come from the roster.",
+
+  "statRostered": "Rostered",
+  "statPresent": "Present",
+  "statAbsent": "Absent",
+  "statPlannedHours": "Planned hours",
+  "statWorking": "Working",
+
+  "coverageMet": "Fully staffed",
+  "coverageShort": "{count} short",
+  "@coverageShort": {
+    "description": "How many people the shift is missing against its weekday minimum.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "coverageOver": "Over capacity",
+  "coverageNoTarget": "No staffing target",
+  "staffingNeedsMin": "Needs at least {min}",
+  "@staffingNeedsMin": {
+    "placeholders": { "min": { "type": "int" } }
+  },
+  "staffingNeedsRange": "Needs {min}–{max}",
+  "@staffingNeedsRange": {
+    "placeholders": { "min": { "type": "int" }, "max": { "type": "int" } }
+  },
+  "restDaysAfter": "{count, plural, =1{1 rest day after} other{{count} rest days after}}",
+  "@restDaysAfter": {
+    "description": "Recovery days the planner keeps free after this shift.",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "shareOfDay": "{percent}% of the day's staff",
+  "@shareOfDay": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
+  "dayHeadcount": "{count, plural, =1{1 person working that day} other{{count} people working that day}}",
+  "@dayHeadcount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "sectionWorkstations": "Workstations",
+  "sectionAbsences": "Absences",
+  "sectionWishes": "Shift wishes",
+  "sectionWeekPattern": "Across the week",
+  "sectionDayContext": "The rest of the day",
+  "sectionOnThisDay": "On this day",
+  "sectionCapabilities": "Capabilities",
+  "sectionAvailableShifts": "Can be scheduled for",
+  "sectionRangeTotals": "Totals",
+
+  "peopleHere": "{count, plural, =1{1 person} other{{count} people}}",
+  "@peopleHere": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "hoursValue": "{hours} h",
+  "@hoursValue": {
+    "placeholders": { "hours": { "type": "String" } }
+  },
+  "plannedAllShifts": "{count} planned here across all shifts",
+  "@plannedAllShifts": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "stationBelowMinimum": "Below its minimum of {min}",
+  "@stationBelowMinimum": {
+    "placeholders": { "min": { "type": "int" } }
+  },
+  "stationAboveMaximum": "Above its maximum of {max}",
+  "@stationAboveMaximum": {
+    "placeholders": { "max": { "type": "int" } }
+  },
+  "stationUnavailable": "Workstation disabled",
+  "priorityHigh": "High priority",
+  "priorityMedium": "Medium priority",
+  "priorityLow": "Low priority",
+
+  "wishesPlaced": "{count, plural, =0{No wishes for this shift} =1{1 wish for this shift} other{{count} wishes for this shift}}",
+  "@wishesPlaced": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "wishesGrantedOf": "{granted} of {count} granted",
+  "@wishesGrantedOf": {
+    "placeholders": { "granted": { "type": "int" }, "count": { "type": "int" } }
+  },
+
+  "absenceSick": "Sick",
+  "absenceDayOff": "Day off",
+  "absenceHoliday": "Holiday",
+  "absenceUnavailable": "Unavailable",
+  "absenceFree": "Free",
+  "absenceUnknown": "Unknown",
+
+  "countedOver": "Counted over {from} – {to}",
+  "@countedOver": {
+    "description": "Which date range an employee's totals were computed from.",
+    "placeholders": { "from": { "type": "String" }, "to": { "type": "String" } }
+  },
+  "monthlyHoursTarget": "{hours} h per month",
+  "@monthlyHoursTarget": {
+    "placeholders": { "hours": { "type": "String" } }
+  },
+  "monthlyLoad": "{percent}% of the monthly target",
+  "@monthlyLoad": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
+  "statDaysWorked": "Days worked",
+  "statDaysRostered": "Days rostered",
+  "skillLevel": "Level {level}",
+  "@skillLevel": {
+    "placeholders": { "level": { "type": "int" } }
+  },
+  "noCapabilities": "No capabilities recorded",
+  "anyShift": "Any shift",
+  "nothingRostered": "Nothing rostered on this day",
+  "noRosterInRange": "Nothing rostered in the loaded range"
+}

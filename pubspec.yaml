@@ -30,6 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Material/Cupertino translations for the locales the app supports.
+  flutter_localizations:
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -48,6 +51,15 @@ dependencies:
   # Browser APIs (location / storage / history) for the web OIDC redirect flow.
   web: ^1.1.0
   flutter_appauth: ^12.0.2
+  # Opens the Google Calendar app / site for a single shift, and hands the
+  # generated .ics to the platform on web.
+  url_launcher: ^6.3.2
+  # Share sheet for the generated .ics file on Android/iOS, so it can be opened
+  # with (imported into) Google Calendar.
+  share_plus: ^13.3.0
+  # Opens the generated .ics with a calendar app (Android ACTION_VIEW through a
+  # FileProvider), which is what lands on Google Calendar's import screen.
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +77,9 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Generate lib/l10n/app_localizations.dart from the ARB files (see l10n.yaml).
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

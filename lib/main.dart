@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
+import 'l10n/app_localizations.dart';
 import 'screens/auth_gate.dart';
 import 'services/app_settings.dart';
 import 'services/auth_service.dart';
 import 'services/shift_data_controller.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Month and weekday names for every supported locale, so DateFormat can be
+  // used with an explicit locale tag rather than only the system one.
+  await initializeDateFormatting();
   runApp(const ShiftViewerApp());
 }
 
@@ -30,21 +36,29 @@ class ShiftViewerApp extends StatelessWidget {
           create: (ctx) => AuthController(ctx.read<SettingsController>()),
         ),
       ],
-      child: MaterialApp(
-        title: 'Shift Viewer',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF3B82F6),
-            brightness: Brightness.dark,
+      // Rebuild on settings changes so switching the language takes effect
+      // immediately, without a restart.
+      child: Consumer<SettingsController>(
+        builder: (context, settings, _) => MaterialApp(
+          onGenerateTitle: (ctx) => AppLocalizations.of(ctx).appTitle,
+          debugShowCheckedModeBanner: false,
+          locale: settings.settings.locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+            colorScheme:
+                ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
+            useMaterial3: true,
           ),
-          useMaterial3: true,
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF3B82F6),
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+          ),
+          home: const AuthGate(),
         ),
-        home: const AuthGate(),
       ),
     );
   }

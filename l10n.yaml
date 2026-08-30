@@ -1,0 +1,9 @@
+# Configuration for `flutter gen-l10n`, which turns lib/l10n/app_*.arb into
+# lib/l10n/app_localizations.dart (checked in, so no codegen step is needed to
+# read the sources in an editor).
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-dir: lib/l10n
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+nullable-getter: false

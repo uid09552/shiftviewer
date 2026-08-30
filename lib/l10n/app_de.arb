@@ -1,0 +1,370 @@
+{
+  "@@locale": "de",
+
+  "appTitle": "Dienstplan",
+
+  "signInSubtitle": "Melde dich an, um deinen Dienstplan zu sehen",
+  "signIn": "Anmelden",
+  "signingIn": "Weiterleitung…",
+  "loginUnsupported": "Die Anmeldung wird auf dieser Plattform nicht unterstützt.",
+  "connectionSettings": "Verbindungseinstellungen",
+  "signOut": "Abmelden",
+
+  "navMonth": "Monat",
+  "navWeek": "Woche",
+  "navDay": "Tag",
+  "navWishes": "Wünsche",
+
+  "openDayView": "Tagesansicht öffnen",
+  "today": "Heute",
+  "refresh": "Aktualisieren",
+  "settings": "Einstellungen",
+  "previous": "Zurück",
+  "next": "Weiter",
+  "save": "Speichern",
+
+  "employee": "Mitarbeiter",
+  "allEmployees": "Alle Mitarbeiter",
+
+  "weekTitle": "{month} {year} · KW{week}",
+  "@weekTitle": {
+    "placeholders": {
+      "month": { "type": "String" },
+      "year": { "type": "String" },
+      "week": { "type": "int" }
+    }
+  },
+  "weekSpanTitle": "{from} – {to} {year}",
+  "@weekSpanTitle": {
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" },
+      "year": { "type": "String" }
+    }
+  },
+
+  "notConfigured": "Nicht konfiguriert. Öffne die Einstellungen und trage die API-URL ein.",
+  "errorWithCode": "{message} ({code})",
+  "@errorWithCode": {
+    "placeholders": {
+      "message": { "type": "String" },
+      "code": { "type": "int" }
+    }
+  },
+
+  "noShiftsScheduled": "Keine Dienste geplant",
+  "workingCount": "{count, plural, =1{1 im Dienst} other{{count} im Dienst}}",
+  "@workingCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "offNoShift": "Frei — kein Dienst",
+  "yourShift": "DEIN DIENST",
+  "noWorkstation": "Kein Arbeitsplatz zugewiesen",
+  "offNotScheduled": "Frei / nicht eingeteilt",
+  "unassignedWorkstation": "Ohne Arbeitsplatz",
+  "absent": "abwesend",
+  "resizeDayOverview": "Ziehen, um die Tagesübersicht zu skalieren · Doppeltippen setzt zurück",
+
+  "shiftWish": "Dienstwunsch",
+  "addShiftWish": "Dienstwunsch hinzufügen",
+  "wishFor": "Wunsch: {shift}",
+  "@wishFor": {
+    "placeholders": {
+      "shift": { "type": "String" }
+    }
+  },
+  "unknownShift": "unbekannter Dienst",
+  "wishDisclaimer": "Die Planung berücksichtigt Wünsche, garantiert sie aber nicht.",
+  "notScheduledOnWeekday": "An diesem Wochentag nicht vorgesehen",
+  "removeWish": "Wunsch entfernen",
+  "removeWishCount": "{count, plural, =1{Wunsch entfernen} other{{count} Wünsche entfernen}}",
+  "@removeWishCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "scopeDay": "Dieser Tag",
+  "scopeSelection": "{count} Tage",
+  "@scopeSelection": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "scopeWeek": "Diese Woche",
+  "scopeMonth": "Dieser Monat",
+  "dayRange": "{from} – {to}",
+  "@dayRange": {
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "shiftRunsOnDays": "Findet an {matching} von {total} Tagen statt",
+  "@shiftRunsOnDays": {
+    "placeholders": {
+      "matching": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+
+  "wishBatchPlaced": "{count, plural, =0{Kein Tag zum Wünschen}=1{Wunsch eingetragen: {shift}} other{{shift} für {count} Tage gewünscht}}",
+  "@wishBatchPlaced": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "shift": { "type": "String" }
+    }
+  },
+  "wishBatchSkipped": "{count, plural, =1{1 Tag übersprungen, der Dienst findet dann nicht statt} other{{count} Tage übersprungen, der Dienst findet dann nicht statt}}",
+  "@wishBatchSkipped": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "wishBatchRemoved": "{count, plural, =0{Kein Wunsch zum Entfernen} =1{Wunsch entfernt} other{{count} Wünsche entfernt}}",
+  "@wishBatchRemoved": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "wishSelectEmployeeFirst": "Wähle zuerst einen Mitarbeiter.",
+  "wishPickEmployeeFirst": "Wähle einen Mitarbeiter, bevor du einen Dienstwunsch einträgst.",
+  "wishNoShiftsAvailable": "Keine Dienste zum Wünschen verfügbar.",
+  "wishConflict": "Für diesen Tag existiert bereits ein Wunsch — bitte neu laden und erneut versuchen.",
+
+  "wishModeOpen": "Wünsche offen",
+  "wishModeRange": "Wünsche {from} – {to}",
+  "@wishModeRange": {
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "wishModeDisabled": "Wünsche deaktiviert",
+  "wishWindowOpenDetail": "Dienstwünsche sind für jeden Termin möglich.",
+  "wishWindowRangeDetail": "Dienstwünsche sind nur von {from} bis {to} möglich.",
+  "@wishWindowRangeDetail": {
+    "placeholders": {
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "wishWindowClosedDetail": "Dienstwünsche sind derzeit deaktiviert.",
+  "wishOutsideWindow": "Dieser Tag liegt außerhalb des Wunschzeitraums.",
+  "wishBatchBlocked": "{count, plural, =1{1 Tag außerhalb des Wunschzeitraums} other{{count} Tage außerhalb des Wunschzeitraums}}",
+  "@wishBatchBlocked": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+
+  "wishPlannerHint": "Tippe auf einen Tag für einen Dienstwunsch · gedrückt halten und ziehen, um mehrere Tage auf einmal zu planen.",
+  "wishPlannerEmpty": "Noch keine Wünsche in diesem Monat",
+  "wishPlannerCount": "{count, plural, =0{Keine Wünsche} =1{1 Wunsch} other{{count} Wünsche}}",
+  "@wishPlannerCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "wishPlannerPickEmployee": "Wähle einen Mitarbeiter, um dessen Dienstwünsche zu planen.",
+
+  "addToCalendar": "Zum Kalender hinzufügen",
+  "addToGoogleCalendar": "Zu Google Kalender hinzufügen",
+  "calendarExportTitle": "Schichten zum Kalender hinzufügen",
+  "calendarExportSubtitle": "{who} · {from} – {to}",
+  "@calendarExportSubtitle": {
+    "placeholders": {
+      "who": { "type": "String" },
+      "from": { "type": "String" },
+      "to": { "type": "String" }
+    }
+  },
+  "calendarExportCount": "{count, plural, =0{Keine bestätigten Schichten} =1{1 bestätigte Schicht} other{{count} bestätigte Schichten}}",
+  "@calendarExportCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "calendarExportAbsences": "{count, plural, =1{1 Abwesenheit ausgelassen} other{{count} Abwesenheiten ausgelassen}}",
+  "@calendarExportAbsences": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "calendarExportEmpty": "Keine bestätigten Schichten in diesem Zeitraum.",
+  "calendarExportMore": "+{count} weitere",
+  "@calendarExportMore": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "calendarShareIcs": "Kalenderdatei teilen",
+  "calendarDownloadIcs": "Kalenderdatei herunterladen",
+  "calendarIcsHint": "Die Datei mit Google Kalender öffnen, um alle Schichten auf einmal zu importieren.",
+  "calendarIcsHintWeb": "In Google Kalender unter Einstellungen ▸ Importieren & exportieren importieren.",
+  "calendarGoogleHint": "Öffnet die Google-Kalender-App oder die Website.",
+  "calendarOpenedGoogle": "In Google Kalender geöffnet.",
+  "calendarIcsReady": "{count, plural, =1{1 Schicht nach {file} exportiert} other{{count} Schichten nach {file} exportiert}}",
+  "@calendarIcsReady": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "file": { "type": "String" }
+    }
+  },
+  "calendarExportDismissed": "Es wurde nichts exportiert.",
+  "calendarExportFailed": "Export fehlgeschlagen: {reason}",
+  "@calendarExportFailed": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+  "calendarAllDay": "Ganztägig",
+
+  "sectionServer": "Server",
+  "apiBaseUrl": "API-Basis-URL",
+  "fieldRequired": "Pflichtfeld",
+  "enterValidUrl": "Gib eine gültige URL ein",
+  "sectionSignIn": "Anmeldung (OIDC · PKCE)",
+  "issuerUrl": "Issuer- / Realm-URL",
+  "clientId": "Client-ID",
+  "clientIdHelper": "Derselbe Client wie im API-Gateway · PKCE (S256)",
+  "redirectUri": "Redirect-URI",
+  "sectionManualLogin": "Manuelle Anmeldung (Fallback)",
+  "username": "Benutzername",
+  "password": "Passwort",
+  "bearerToken": "Bearer-Token (optional)",
+  "bearerTokenHelper": "Wird statt Benutzername/Passwort verwendet, wenn gesetzt",
+  "sectionCalendarScope": "Kalenderumfang",
+  "employeeIdOptional": "Mitarbeiter-ID (optional)",
+  "employeeIdHelper": "Nur den Plan dieses Mitarbeiters zeigen; leer lassen für alle",
+  "testConnection": "Verbindung testen",
+  "connectionSuccessful": "Verbindung erfolgreich",
+  "connectionFailed": "Fehlgeschlagen: {reason}",
+  "@connectionFailed": {
+    "placeholders": {
+      "reason": { "type": "String" }
+    }
+  },
+
+  "sectionAppearance": "Sprache",
+  "language": "Sprache",
+  "languageSystem": "Systemsprache",
+  "languageEnglish": "Englisch",
+  "languageGerman": "Deutsch",
+
+  "shiftInsights": "Dienstdetails",
+  "employeeInsights": "Mitarbeiter",
+  "showShiftDetails": "Dienstdetails und Statistik anzeigen",
+  "showEmployeeDetails": "Details zu diesem Mitarbeiter anzeigen",
+  "analysisUnavailable": "Server-Statistiken sind nicht verfügbar — die Zahlen unten stammen aus dem Dienstplan.",
+
+  "statRostered": "Eingeteilt",
+  "statPresent": "Anwesend",
+  "statAbsent": "Abwesend",
+  "statPlannedHours": "Geplante Stunden",
+  "statWorking": "Im Dienst",
+
+  "coverageMet": "Vollständig besetzt",
+  "coverageShort": "{count} zu wenig",
+  "@coverageShort": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "coverageOver": "Überbesetzt",
+  "coverageNoTarget": "Keine Sollbesetzung",
+  "staffingNeedsMin": "Mindestens {min} nötig",
+  "@staffingNeedsMin": {
+    "placeholders": { "min": { "type": "int" } }
+  },
+  "staffingNeedsRange": "{min}–{max} nötig",
+  "@staffingNeedsRange": {
+    "placeholders": { "min": { "type": "int" }, "max": { "type": "int" } }
+  },
+  "restDaysAfter": "{count, plural, =1{1 Ruhetag danach} other{{count} Ruhetage danach}}",
+  "@restDaysAfter": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "shareOfDay": "{percent}% der Tagesbesetzung",
+  "@shareOfDay": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
+  "dayHeadcount": "{count, plural, =1{1 Person an diesem Tag im Dienst} other{{count} Personen an diesem Tag im Dienst}}",
+  "@dayHeadcount": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+
+  "sectionWorkstations": "Arbeitsplätze",
+  "sectionAbsences": "Abwesenheiten",
+  "sectionWishes": "Dienstwünsche",
+  "sectionWeekPattern": "Über die Woche",
+  "sectionDayContext": "Der restliche Tag",
+  "sectionOnThisDay": "An diesem Tag",
+  "sectionCapabilities": "Qualifikationen",
+  "sectionAvailableShifts": "Einsetzbar für",
+  "sectionRangeTotals": "Summen",
+
+  "peopleHere": "{count, plural, =1{1 Person} other{{count} Personen}}",
+  "@peopleHere": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "hoursValue": "{hours} h",
+  "@hoursValue": {
+    "placeholders": { "hours": { "type": "String" } }
+  },
+  "plannedAllShifts": "{count} hier geplant über alle Dienste",
+  "@plannedAllShifts": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "stationBelowMinimum": "Unter dem Minimum von {min}",
+  "@stationBelowMinimum": {
+    "placeholders": { "min": { "type": "int" } }
+  },
+  "stationAboveMaximum": "Über dem Maximum von {max}",
+  "@stationAboveMaximum": {
+    "placeholders": { "max": { "type": "int" } }
+  },
+  "stationUnavailable": "Arbeitsplatz deaktiviert",
+  "priorityHigh": "Hohe Priorität",
+  "priorityMedium": "Mittlere Priorität",
+  "priorityLow": "Niedrige Priorität",
+
+  "wishesPlaced": "{count, plural, =0{Keine Wünsche für diesen Dienst} =1{1 Wunsch für diesen Dienst} other{{count} Wünsche für diesen Dienst}}",
+  "@wishesPlaced": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "wishesGrantedOf": "{granted} von {count} erfüllt",
+  "@wishesGrantedOf": {
+    "placeholders": { "granted": { "type": "int" }, "count": { "type": "int" } }
+  },
+
+  "absenceSick": "Krank",
+  "absenceDayOff": "Freier Tag",
+  "absenceHoliday": "Urlaub",
+  "absenceUnavailable": "Nicht verfügbar",
+  "absenceFree": "Frei",
+  "absenceUnknown": "Unbekannt",
+
+  "countedOver": "Gezählt über {from} – {to}",
+  "@countedOver": {
+    "placeholders": { "from": { "type": "String" }, "to": { "type": "String" } }
+  },
+  "monthlyHoursTarget": "{hours} h pro Monat",
+  "@monthlyHoursTarget": {
+    "placeholders": { "hours": { "type": "String" } }
+  },
+  "monthlyLoad": "{percent}% des Monatssolls",
+  "@monthlyLoad": {
+    "placeholders": { "percent": { "type": "int" } }
+  },
+  "statDaysWorked": "Diensttage",
+  "statDaysRostered": "Eingeteilte Tage",
+  "skillLevel": "Stufe {level}",
+  "@skillLevel": {
+    "placeholders": { "level": { "type": "int" } }
+  },
+  "noCapabilities": "Keine Qualifikationen hinterlegt",
+  "anyShift": "Jeder Dienst",
+  "nothingRostered": "An diesem Tag nichts eingeteilt",
+  "noRosterInRange": "Im geladenen Zeitraum nichts eingeteilt"
+}

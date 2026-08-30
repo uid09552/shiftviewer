@@ -1,0 +1,4518 @@
+openapi: 3.0.0
+info:
+  title: Hospital Shift Management API
+  description: API for managing hospital employee shifts, capabilities, and workstations
+  version: 1.0.0
+  contact:
+    name: Support Team
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+  - url: https://api.example.com/api/v1
+    description: Production server
+
+tags:
+  - name: Employees
+    description: Employee management endpoints
+  - name: Shifts
+    description: Shift management endpoints
+  - name: Capabilities
+    description: Worker capability management endpoints
+  - name: Workstations
+    description: Workstation management endpoints
+  - name: Unavailability
+    description: Employee unavailability management endpoints
+  - name: Shift Wishes
+    description: Employee shift wish management endpoints (requested shift + date, considered by the optimizer)
+  - name: Wish Settings
+    description: The tenant's shift-wish window — whether, and for which dates, employees may place wishes themselves (shift-admin only to change)
+  - name: Planner
+    description: Shift scheduling planner endpoints
+  - name: Shift Assignments
+    description: Fixed shift assignment management endpoints
+  - name: Confirmed Shift Plans
+    description: Confirmed shift plan management endpoints per employee
+  - name: Analysis
+    description: Analysis and summary endpoints for shift planning data
+  - name: Audit Logs
+    description: Audit log events for user/config changes and optimizer runs
+
+paths:
+  /employees:
+    get:
+      tags:
+        - Employees
+      summary: List all employees
+      operationId: listEmployees
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Paginated list of employees
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeePaginatedResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Employees
+      summary: Create a new employee
+      operationId: createEmployee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmployeeRequest'
+      responses:
+        '201':
+          description: Employee created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already exists
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /employees/template:
+    get:
+      tags:
+        - Employees
+      summary: Download an empty Excel import template for employees
+      operationId: downloadEmployeeTemplate
+      responses:
+        '200':
+          description: .xlsx template with columns name, email, max_working_hours, capabilities, available_shifts
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /employees/import:
+    post:
+      tags:
+        - Employees
+      summary: Bulk-create employees from an Excel file
+      description: |
+        Rows follow the columns from GET /employees/template. `capabilities` and
+        `available_shifts` are comma-separated lists of existing capability/shift
+        names; unmatched names are reported as warnings rather than failing the row.
+      operationId: importEmployees
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /employees/{employeeId}:
+    get:
+      tags:
+        - Employees
+      summary: Get an employee by ID
+      operationId: getEmployeeById
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Employee details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Employees
+      summary: Update an employee
+      operationId: updateEmployee
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmployeeRequest'
+      responses:
+        '200':
+          description: Employee updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Email already exists
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /employees/email/{email}:
+    get:
+      tags:
+        - Employees
+      summary: Get an employee by email
+      operationId: getEmployeeByEmail
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: Employee details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /employees/{employeeId}/capabilities:
+    get:
+      tags:
+        - Employees
+      summary: Get all capabilities of an employee
+      operationId: getEmployeeCapabilities
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of capabilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Capability'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Employees
+      summary: Add a capability to an employee
+      operationId: addEmployeeCapability
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - capability_id
+              properties:
+                capability_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Capability added successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Employee already has this capability
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /employees/{employeeId}/available-shifts:
+    get:
+      tags:
+        - Employees
+      summary: Get available shifts for an employee
+      operationId: getEmployeeAvailableShifts
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of available shifts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Shift'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Employees
+      summary: Add an available shift to an employee
+      operationId: addEmployeeAvailableShift
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shift_id
+              properties:
+                shift_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Shift added as available
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Shift already marked as available
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shifts:
+    get:
+      tags:
+        - Shifts
+      summary: List all shifts
+      operationId: listShifts
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of shifts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Shift'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Shifts
+      summary: Create a new shift
+      operationId: createShift
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShiftRequest'
+      responses:
+        '201':
+          description: Shift created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shifts/template:
+    get:
+      tags:
+        - Shifts
+      summary: Download an empty Excel import template for shifts
+      operationId: downloadShiftTemplate
+      responses:
+        '200':
+          description: .xlsx template with columns name, short_name, color, order
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /shifts/import:
+    post:
+      tags:
+        - Shifts
+      summary: Bulk-create shifts from an Excel file
+      description: |
+        Rows follow the columns from GET /shifts/template. Per-weekday start/end
+        times are not part of the template and must be configured afterward.
+      operationId: importShifts
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shifts/{shiftId}:
+    get:
+      tags:
+        - Shifts
+      summary: Get a shift by ID
+      operationId: getShiftById
+      parameters:
+        - name: shiftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shift details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shifts/{shiftId}/weekday-times:
+    post:
+      tags:
+        - Shifts
+      summary: Set start/end time for a weekday on a shift
+      description: |
+        Creates or updates the start_time and end_time for a specific weekday (0=Monday, 6=Sunday) on the given shift.
+        If a time entry already exists for that (shiftId, weekday) pair, it will be updated.
+      operationId: setShiftWeekdayTime
+      parameters:
+        - name: shiftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetWeekdayTimeRequest'
+      responses:
+        '200':
+          description: Weekday time set successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeekdayTime'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shifts/{shiftId}/weekday-times/{weekday}:
+    delete:
+      tags:
+        - Shifts
+      summary: Delete a weekday time entry for a shift
+      operationId: deleteShiftWeekdayTime
+      parameters:
+        - name: shiftId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: weekday
+          in: path
+          required: true
+          description: Weekday number (0=Monday, 6=Sunday)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 6
+      responses:
+        '200':
+          description: Weekday time deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /capabilities:
+    get:
+      tags:
+        - Capabilities
+      summary: List all capabilities
+      operationId: listCapabilities
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of capabilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Capability'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Capabilities
+      summary: Create a new capability
+      operationId: createCapability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCapabilityRequest'
+      responses:
+        '201':
+          description: Capability created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capability'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /capabilities/template:
+    get:
+      tags:
+        - Capabilities
+      summary: Download an empty Excel import template for capabilities
+      operationId: downloadCapabilityTemplate
+      responses:
+        '200':
+          description: .xlsx template with a single name column
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /capabilities/import:
+    post:
+      tags:
+        - Capabilities
+      summary: Bulk-create capabilities from an Excel file
+      operationId: importCapabilities
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /capabilities/{capabilityId}:
+    get:
+      tags:
+        - Capabilities
+      summary: Get a capability by ID
+      operationId: getCapabilityById
+      parameters:
+        - name: capabilityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Capability details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Capability'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations:
+    get:
+      tags:
+        - Workstations
+      summary: List all workstations
+      operationId: listWorkstations
+      parameters:
+        - name: available
+          in: query
+          description: Filter by availability status
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of workstations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workstation'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Workstations
+      summary: Create a new workstation
+      operationId: createWorkstation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkstationRequest'
+      responses:
+        '201':
+          description: Workstation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workstation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/template:
+    get:
+      tags:
+        - Workstations
+      summary: Download an empty Excel import template for workstations
+      operationId: downloadWorkstationTemplate
+      responses:
+        '200':
+          description: .xlsx template with columns name, priority, min_employees, max_employees, available, active_shifts, required_capabilities
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /workstations/import:
+    post:
+      tags:
+        - Workstations
+      summary: Bulk-create workstations from an Excel file
+      description: |
+        Rows follow the columns from GET /workstations/template. `active_shifts`
+        and `required_capabilities` are comma-separated lists of existing
+        shift/capability names; unmatched names are reported as warnings rather
+        than failing the row.
+      operationId: importWorkstations
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/{workstationId}:
+    get:
+      tags:
+        - Workstations
+      summary: Get a workstation by ID
+      operationId: getWorkstationById
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Workstation details with capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkstationDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Workstations
+      summary: Update a workstation
+      operationId: updateWorkstation
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkstationRequest'
+      responses:
+        '200':
+          description: Workstation updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workstation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/{workstationId}/availability:
+    put:
+      tags:
+        - Workstations
+      summary: Set workstation availability (full update)
+      operationId: setWorkstationAvailability
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - available
+              properties:
+                available:
+                  type: boolean
+                active_shift_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: List of active shift IDs for the workstation
+      responses:
+        '200':
+          description: Availability updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workstation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/{workstationId}/enable:
+    patch:
+      tags:
+        - Workstations
+      summary: Enable a workstation
+      description: Sets the workstation's available flag to true, making it eligible for shift assignments and optimizer scheduling.
+      operationId: enableWorkstation
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Workstation enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workstation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/{workstationId}/disable:
+    patch:
+      tags:
+        - Workstations
+      summary: Disable a workstation
+      description: Sets the workstation's available flag to false, excluding it from shift assignments and optimizer scheduling without deleting it.
+      operationId: disableWorkstation
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Workstation disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workstation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/{workstationId}/required-capabilities:
+    get:
+      tags:
+        - Workstations
+      summary: Get required capabilities for a workstation
+      operationId: getWorkstationRequiredCapabilities
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of required capabilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Capability'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Workstations
+      summary: Add a required capability to a workstation
+      operationId: addWorkstationRequiredCapability
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - capability_id
+              properties:
+                capability_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Capability added as required
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Capability already required for this workstation
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/{workstationId}/unavailabilities:
+    get:
+      tags:
+        - Workstations
+      summary: List unavailability periods for a workstation
+      operationId: listWorkstationUnavailabilities
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from_date
+          in: query
+          description: Filter to ranges overlapping on/after this date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          description: Filter to ranges overlapping on/before this date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of workstation unavailability periods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkstationUnavailability'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Workstations
+      summary: Create a new workstation unavailability period
+      description: |
+        Marks the workstation as unavailable for planning during an inclusive date range
+        (e.g. maintenance or renovation). The planner will skip assigning employees to
+        this workstation for any day within the range.
+      operationId: createWorkstationUnavailability
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkstationUnavailabilityRequest'
+      responses:
+        '201':
+          description: Workstation unavailability created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkstationUnavailability'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /workstations/{workstationId}/unavailabilities/{unavailabilityId}:
+    get:
+      tags:
+        - Workstations
+      summary: Get a workstation unavailability period by ID
+      operationId: getWorkstationUnavailabilityById
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: unavailabilityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Workstation unavailability details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkstationUnavailability'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Workstations
+      summary: Delete a workstation unavailability period
+      operationId: deleteWorkstationUnavailability
+      parameters:
+        - name: workstationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: unavailabilityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Workstation unavailability deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /unavailabilities:
+    get:
+      tags:
+        - Unavailability
+      summary: List all unavailabilities
+      operationId: listUnavailabilities
+      parameters:
+        - name: employee_id
+          in: query
+          description: Filter by employee ID
+          schema:
+            type: string
+            format: uuid
+        - name: from_date
+          in: query
+          description: Start date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          description: End date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of unavailabilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Unavailability'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Unavailability
+      summary: Create a new unavailability
+      operationId: createUnavailability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUnavailabilityRequest'
+      responses:
+        '201':
+          description: Unavailability created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unavailability'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /unavailabilities/{unavailabilityId}:
+    get:
+      tags:
+        - Unavailability
+      summary: Get an unavailability by ID
+      operationId: getUnavailabilityById
+      parameters:
+        - name: unavailabilityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Unavailability details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unavailability'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Unavailability
+      summary: Delete an unavailability
+      operationId: deleteUnavailability
+      parameters:
+        - name: unavailabilityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Unavailability deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shift-wishes:
+    get:
+      tags:
+        - Shift Wishes
+      summary: List all shift wishes
+      description: >
+        Shift wishes are employee requests to work a specific shift on a specific
+        date. They are stored separately from confirmed shift plans and treated
+        as a soft reward by the schedule optimizer.
+      operationId: listShiftWishes
+      parameters:
+        - name: employee_id
+          in: query
+          description: Filter by employee ID
+          schema:
+            type: string
+            format: uuid
+        - name: from_date
+          in: query
+          description: Start date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          description: End date (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of shift wishes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShiftWish'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Shift Wishes
+      summary: Create a new shift wish
+      description: >
+        Requires the `shift-planner` or `shift-admin` realm role to create a wish for
+        any employee. A `shift-viewer` may only create wishes for themselves — the
+        employee's e-mail address must match the `email` or `preferred_username`
+        claim of their token, otherwise the request is rejected with 403.
+
+
+        Every wish is additionally subject to the tenant's wish window
+        (GET/PUT /wish-settings), whatever the caller's role: with `mode: disabled`
+        the request is refused outright, with `mode: date_range` unless `wish_date`
+        falls inside the window.
+      operationId: createShiftWish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShiftWishRequest'
+      responses:
+        '201':
+          description: Shift wish created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftWish'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: A wish already exists for this employee and date
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shift-wishes/{wishId}:
+    get:
+      tags:
+        - Shift Wishes
+      summary: Get a shift wish by ID
+      operationId: getShiftWishById
+      parameters:
+        - name: wishId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shift wish details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShiftWish'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Shift Wishes
+      summary: Delete a shift wish
+      description: >
+        Requires the `shift-planner` or `shift-admin` realm role to delete any wish.
+        A `shift-viewer` may only delete their own wishes — the wish's employee must
+        match the `email` or `preferred_username` claim of their token, otherwise the
+        request is rejected with 403. The tenant's wish window (GET/PUT
+        /wish-settings) must also be open for the wish's date — for every role, so a
+        wish placed inside a window cannot be withdrawn after it closes.
+      operationId: deleteShiftWish
+      parameters:
+        - name: wishId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Shift wish deleted successfully
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /wish-settings:
+    get:
+      tags:
+        - Wish Settings
+      summary: Get the shift-wish window
+      description: >
+        Returns whether employees may place shift wishes themselves, and for which
+        dates. Readable by every role — the UI needs it to decide whether to offer
+        the wish picker. A row with `mode: enabled` is created on first access.
+      operationId: getWishSettings
+      responses:
+        '200':
+          description: Successfully retrieved the wish settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishSettingsResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Wish Settings
+      summary: Update the shift-wish window
+      description: >
+        Replaces the tenant's shift-wish window. **Requires the `shift-admin` realm
+        role** — a `shift-planner` passes the method check but is rejected with 403
+        here, and a `shift-viewer` is rejected by the role middleware.
+
+
+        `mode: date_range` requires both `window_start` and `window_end`. The two
+        dates are stored in the other modes too, so switching back to `date_range`
+        does not lose them.
+
+
+        The window is a lock and binds **every** role: while it is closed, or for a
+        date outside it, no caller creates or deletes a wish — `shift-admin`
+        included. Re-open the window first (which is itself audit-logged) to change
+        a wish. Roles still decide *whose* wishes a caller may touch: planners and
+        admins anyone's, a `shift-viewer` only their own.
+      operationId: updateWishSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWishSettingsRequest'
+      responses:
+        '200':
+          description: Successfully updated the wish settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishSettingsResponse'
+        '400':
+          description: An incomplete or inverted window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/plan:
+    post:
+      tags:
+        - Planner
+      summary: Trigger shift scheduling planning (async)
+      description: Starts a shift scheduling optimization task asynchronously. Returns a task ID immediately. Poll GET /planner/plan/{task_id}/status to check progress.
+      operationId: triggerPlan
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanRequest'
+      responses:
+        '200':
+          description: Optimization task started, task ID returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/plan/{task_id}/status:
+    get:
+      tags:
+        - Planner
+      summary: Get async plan task status
+      description: Polls the status of an async optimization task. When status is "completed", result_id contains the ID of the stored OptimizedShiftResult.
+      operationId: getPlanStatus
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: The task ID returned by POST /planner/plan
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Task status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanTaskStatusResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/prepare:
+    post:
+      tags:
+        - Planner
+      summary: Prepare optimization request
+      description: Builds the TaskDTO structure from the current database state (shifts, employees, workstations) and returns it without triggering the optimizer. Optionally filters by a list of employee IDs.
+      operationId: preparePlan
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanRequest'
+      responses:
+        '200':
+          description: Successfully prepared the optimization request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDTO'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner-settings:
+    get:
+      tags:
+        - Planner
+      summary: Get planner algorithm settings
+      description: Returns the current tenant's configurable optimizer (CP-SAT) settings, creating a row with default values on first access.
+      operationId: getPlannerSettings
+      responses:
+        '200':
+          description: Successfully retrieved planner settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannerSettingsResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Planner
+      summary: Update planner algorithm settings
+      description: Replaces the current tenant's optimizer settings. These are merged into every subsequent /planner/plan and /planner/prepare request as the default constraint configuration.
+      operationId: updatePlannerSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlannerSettingsRequest'
+      responses:
+        '200':
+          description: Successfully updated planner settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannerSettingsResponse'
+        '400':
+          description: Invalid settings value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/tasks:
+    get:
+      tags:
+        - Planner
+      summary: List all scheduling tasks
+      description: Returns a list of all planning tasks stored in the database, ordered by creation date descending.
+      operationId: listTasks
+      responses:
+        '200':
+          description: Successfully retrieved list of tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTasksResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/tasks/{task_id}:
+    get:
+      tags:
+        - Planner
+      summary: Get a single scheduling task
+      description: Returns a planning task by its UUID.
+      operationId: getTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          description: The UUID of the planning task to retrieve
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successfully retrieved task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningTaskResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/optimized-shifts:
+    get:
+      tags:
+        - Planner
+      summary: List stored optimized shift results
+      description: Returns a paginated list of stored optimization results, ordered by creation date descending. When latest=true, returns only the most recent optimization result.
+      operationId: listOptimizedShifts
+      parameters:
+        - name: latest
+          in: query
+          description: When true, returns only the most recent optimization result
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          description: Maximum number of results to return (ignored when latest=true)
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip (ignored when latest=true)
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Paginated list of optimized shift results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOptimizedShiftResultsResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/optimized-shifts/{resultId}:
+    get:
+      tags:
+        - Planner
+      summary: Get a specific optimized shift result
+      description: Returns a specific stored optimization result by its ID.
+      operationId: getOptimizedShift
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          description: The ID of the optimized shift result to retrieve
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Optimized shift result details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizedShiftResultResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      tags:
+        - Planner
+      summary: Update a specific optimized shift result
+      description: Overwrites the stored proposed schedule for a specific optimization result. Used to persist manual edits made in the scheduler UI (single-assignment changes, mass operations) before taking the schedule as a confirmed plan.
+      operationId: updateOptimizedShift
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          description: The ID of the optimized shift result to update
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskResultDto'
+      responses:
+        '200':
+          description: Updated optimized shift result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizedShiftResultResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags:
+        - Planner
+      summary: Delete a specific optimized shift result
+      description: Removes a specific stored optimization result by its ID.
+      operationId: deleteOptimizedShift
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          description: The ID of the optimized shift result to delete
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Optimized shift result deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /planner/optimized-shifts/{resultId}/take-as-plan:
+    post:
+      tags:
+        - Planner
+      summary: Take an optimized result as the confirmed shift plan
+      description: Overwrites the confirmed shift plans for this result's planning period with its assignments and free days, optionally scoped to a subset of employees. Runs entirely server-side in one transaction (delete existing plans in the period + bulk upsert the new ones) instead of requiring the client to issue a per-employee load, per-entry delete, and per-entry create sequence of calls.
+      operationId: takeOptimizedShiftAsPlan
+      parameters:
+        - name: resultId
+          in: path
+          required: true
+          description: The ID of the optimized shift result to take as the confirmed plan
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                employee_ids:
+                  type: array
+                  description: Restrict the operation to these employees. Omit or leave empty to apply to every employee in the result.
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: Confirmed shift plans replaced successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - employee_count
+                  - created
+                properties:
+                  employee_count:
+                    type: integer
+                    description: Number of employees the operation was applied to
+                    example: 12
+                  created:
+                    type: integer
+                    description: Number of confirmed shift plan rows created/updated
+                    example: 156
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /employees/{employeeId}/shift-assignments:
+    get:
+      tags:
+        - Shift Assignments
+      summary: Get fixed shift assignments for an employee
+      description: Returns the real, assigned fixed shift plan for a specific employee. Supports optional date range filtering via from_date/to_date query parameters. Returns both future and historical assignments.
+      operationId: getEmployeeShiftAssignments
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from_date
+          in: query
+          description: Start date for filtering (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          description: End date for filtering (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of shift assignments for the employee
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EmployeeShiftAssignment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Shift Assignments
+      summary: Create a fixed shift assignment for an employee
+      description: Assigns a specific shift to an employee on a given date. Each employee can only have one shift assignment per date.
+      operationId: createShiftAssignment
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShiftAssignmentRequest'
+      responses:
+        '201':
+          description: Shift assignment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeShiftAssignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Employee already has a shift assignment for this date
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shift-assignments/import:
+    post:
+      tags:
+        - Shift Assignments
+      summary: Bulk-create fixed shift assignments from a parsed roster
+      description: |
+        Creates many fixed shift assignments in one call, matching employees and
+        shifts **by name** rather than by id — employees by full name, email or
+        UUID (surname-first spellings such as "Meier, Anna" are matched too),
+        shifts by name, short name (the roster code) or UUID.
+
+        Intended for importing an existing roster document. Send `dry_run: true`
+        first: nothing is written and the response reports exactly what would
+        happen — how many rows resolved, which employee and shift names matched
+        which records, and which matched nothing — so the interpretation can be
+        shown to the user for confirmation before any data changes. Repeat the
+        same request with `dry_run: false` to apply it.
+
+        An employee can hold only one assignment per date. A row that collides
+        with an existing assignment is skipped and reported, unless
+        `replace_existing` is set, in which case the existing one is removed
+        first.
+      operationId: importShiftAssignments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportShiftAssignmentsRequest'
+      responses:
+        '200':
+          description: Import result (a report only, when dry_run was set)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportShiftAssignmentsResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /shift-assignments/{assignmentId}:
+    delete:
+      tags:
+        - Shift Assignments
+      summary: Delete a shift assignment
+      description: Removes a specific fixed shift assignment by its ID.
+      operationId: deleteShiftAssignment
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shift assignment deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                    example: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /confirmed-shift-plans:
+    get:
+      tags:
+        - Confirmed Shift Plans
+      summary: List all confirmed shift plans
+      description: "Returns a paginated list of confirmed shift plans. Supports optional from_date/to_date query parameters for date range filtering, and limit/offset for pagination."
+      operationId: listConfirmedShiftPlans
+      parameters:
+        - name: from_date
+          in: query
+          description: Start date for filtering (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          description: End date for filtering (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Paginated list of confirmed shift plans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmedShiftPlanPaginatedResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /confirmed-shift-plans/{planId}:
+    get:
+      tags:
+        - Confirmed Shift Plans
+      summary: Get a confirmed shift plan by ID
+      description: Returns a specific confirmed shift plan by its ID.
+      operationId: getConfirmedShiftPlanById
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Confirmed shift plan details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmedShiftPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      tags:
+        - Confirmed Shift Plans
+      summary: Update a confirmed shift plan
+      description: Updates a specific confirmed shift plan by its ID.
+      operationId: updateConfirmedShiftPlan
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConfirmedShiftPlanRequest'
+      responses:
+        '200':
+          description: Confirmed shift plan updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmedShiftPlan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Confirmed Shift Plans
+      summary: Delete a confirmed shift plan
+      description: Removes a specific confirmed shift plan by its ID.
+      operationId: deleteConfirmedShiftPlan
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Confirmed shift plan deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                    example: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /employees/{employeeId}/confirmed-shift-plans:
+    get:
+      tags:
+        - Confirmed Shift Plans
+      summary: Get confirmed shift plans for an employee
+      description: Returns the confirmed shift plans for a specific employee. Supports optional from_date/to_date query parameters for date range filtering.
+      operationId: getEmployeeConfirmedShiftPlans
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from_date
+          in: query
+          description: Start date for filtering (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          description: End date for filtering (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of confirmed shift plans for the employee
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfirmedShiftPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Confirmed Shift Plans
+      summary: Create a confirmed shift plan for an employee
+      description: Creates a new confirmed shift plan entry for an employee. Each employee can only have one confirmed shift plan per date.
+      operationId: createConfirmedShiftPlan
+      parameters:
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConfirmedShiftPlanRequest'
+      responses:
+        '201':
+          description: Confirmed shift plan created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmedShiftPlan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Employee already has a confirmed shift plan for this date
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /analysis/planned-hours-per-day-per-workstation:
+    get:
+      tags:
+        - Analysis
+      summary: Get planned hours per day per workstation
+      description: "Returns the total planned working hours per day per workstation based on confirmed shift plans. Calculates hours from shift weekday times. Requires from_date and to_date query parameters."
+      operationId: getPlannedHoursPerDayPerWorkstation
+      parameters:
+        - name: from_date
+          in: query
+          required: true
+          description: Start date for the analysis period (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          required: true
+          description: End date for the analysis period (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of planned hours per day per workstation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkstationDailyHours'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /analysis/planned-employees-per-day-per-workstation:
+    get:
+      tags:
+        - Analysis
+      summary: Get planned employees per day per workstation
+      description: "Returns the number of planned employees per day per workstation based on confirmed shift plans. Only counts employees who are marked as present. Requires from_date and to_date query parameters."
+      operationId: getPlannedEmployeesPerDayPerWorkstation
+      parameters:
+        - name: from_date
+          in: query
+          required: true
+          description: Start date for the analysis period (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          required: true
+          description: End date for the analysis period (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of planned employee counts per day per workstation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkstationDailyEmployees'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /analysis/staffing-per-day:
+    get:
+      tags:
+        - Analysis
+      summary: Get who works per day, and how many
+      description: "Returns, for each day in the range, how many distinct employees are working according to the confirmed roster, who they are (with shift and workstation names resolved), and the split per shift. Counts everyone marked present, including anyone rostered without a workstation — so unlike the per-workstation breakdowns, this is the head count for the day. Requires from_date and to_date query parameters."
+      operationId: getStaffingPerDay
+      parameters:
+        - name: from_date
+          in: query
+          required: true
+          description: First day of the range (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+        - name: to_date
+          in: query
+          required: true
+          description: Last day of the range, inclusive (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Head count per day, with the per-shift split
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DailyStaffing'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /audit-logs:
+    get:
+      tags:
+        - Audit Logs
+      summary: List audit log events
+      description: Returns audit log events for the current tenant, most recent first. Events are recorded for employee add/remove, configuration changes (shifts, workstations, capabilities), and scheduler optimize requests. Supports optional filtering by action, entity_type, and a from_date/to_date range, plus pagination.
+      operationId: listAuditLogs
+      parameters:
+        - name: action
+          in: query
+          required: false
+          description: "Filter by exact action, e.g. employee.create, shift.update, planner.optimize"
+          schema:
+            type: string
+        - name: entity_type
+          in: query
+          required: false
+          description: "Filter by entity type, e.g. employee, shift, workstation, capability, planning_task"
+          schema:
+            type: string
+        - name: from_date
+          in: query
+          required: false
+          description: Only include events at or after this date/time. Accepts YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS.
+          schema:
+            type: string
+        - name: to_date
+          in: query
+          required: false
+          description: Only include events at or before this date/time. Accepts YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Paginated list of audit log events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditLogsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    Employee:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - monthly_working_hours
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique employee identifier
+        name:
+          type: string
+          description: Employee full name
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          description: Employee email (unique)
+          example: "john.doe@hospital.com"
+        monthly_working_hours:
+          type: number
+          format: double
+          description: Monthly working hours for the employee
+          example: 160.0
+        available_shifts:
+          type: array
+          description: Shifts this employee may be scheduled for. Returned on reads; set through the available-shifts endpoints.
+          items:
+            $ref: '#/components/schemas/Shift'
+        capabilities:
+          type: array
+          description: Capabilities this employee holds. Returned on reads; set through the capabilities endpoints.
+          items:
+            $ref: '#/components/schemas/Capability'
+
+    EmployeePaginatedResponse:
+      type: object
+      required:
+        - data
+        - total
+        - limit
+        - offset
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Employee'
+          description: Employees for the current page
+        total:
+          type: integer
+          description: Total number of employees
+          example: 40
+        limit:
+          type: integer
+          description: Maximum number of results returned
+          example: 50
+        offset:
+          type: integer
+          description: Number of results skipped
+          example: 0
+
+    PlanRequest:
+      type: object
+      properties:
+        start_date:
+          type: string
+          format: date
+          description: Start date of the planning period
+          example: "2026-06-09"
+        end_date:
+          type: string
+          format: date
+          description: End date of the planning period
+          example: "2026-06-15"
+        employee_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Optional list of employee IDs to include in planning.
+            If not provided or empty, all employees will be considered.
+          example: ["550e8400-e29b-41d4-a716-446655440000", "660e8400-e29b-41d4-a716-446655440001"]
+
+    PlanResponse:
+      type: object
+      required:
+        - task_id
+      properties:
+        task_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the planning task
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    PlanTaskStatusResponse:
+      type: object
+      required:
+        - task_id
+        - status
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [running, completed, failed]
+          description: Current status of the optimization task
+        result_id:
+          type: string
+          format: uuid
+          description: ID of the stored OptimizedShiftResult (only present when status is "completed")
+
+    PlanningTaskResponse:
+      type: object
+      required:
+        - id
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique task identifier
+        status:
+          type: string
+          description: Current status of the task
+          enum: [scheduled, done, error]
+          example: "scheduled"
+        result_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the stored OptimizedShiftResult (present when status is "done")
+        error_message:
+          type: string
+          nullable: true
+          description: Error details (present when status is "error")
+        created_at:
+          type: string
+          format: date-time
+          description: Task creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last status update timestamp
+
+    PriorityWeights:
+      type: object
+      required:
+        - high
+        - medium
+        - low
+      properties:
+        high:
+          type: integer
+          description: Objective weight for staffing high-priority workstations
+          example: 10000
+        medium:
+          type: integer
+          description: Objective weight for staffing medium-priority workstations
+          example: 1000
+        low:
+          type: integer
+          description: Objective weight for staffing low-priority workstations
+          example: 100
+
+    PlannerSettingsResponse:
+      type: object
+      required:
+        - night_shift_recovery_days
+        - min_rest_hours
+        - max_consecutive_days
+        - max_working_days_per_week
+        - equality_weight
+        - priority_weights
+        - monthly_hours_target_weight
+        - solver_time_limit_seconds
+        - solver_num_workers
+        - updated_at
+      properties:
+        night_shift_recovery_days:
+          type: integer
+          minimum: 0
+          maximum: 7
+          description: Number of days off required after a night shift (0 disables the constraint)
+          example: 2
+        min_rest_hours:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 24
+          description: Minimum rest hours required between shifts on consecutive days (0 disables the constraint)
+          example: 11.0
+        max_consecutive_days:
+          type: integer
+          minimum: 0
+          maximum: 14
+          description: Maximum consecutive working days (0 disables the constraint)
+          example: 6
+        max_working_days_per_week:
+          type: integer
+          minimum: 0
+          maximum: 7
+          description: Maximum working days per calendar week (0 disables the constraint)
+          example: 5
+        equality_weight:
+          type: integer
+          minimum: 0
+          description: Objective weight for balancing working hours fairly across employees
+          example: 50000
+        priority_weights:
+          $ref: '#/components/schemas/PriorityWeights'
+        monthly_hours_target_weight:
+          type: integer
+          minimum: 0
+          description: Objective weight for meeting each employee's monthly working-hours target
+          example: 1000
+        solver_time_limit_seconds:
+          type: number
+          format: double
+          # Strictly greater than zero. Expressed in prose rather than as
+          # `exclusiveMinimum: true`, which is OpenAPI 3.0's boolean form: the
+          # MCP server generates JSON Schema 2020-12 tools from this document,
+          # and there `exclusiveMinimum` must be a number, so the boolean form
+          # makes the generated tool fail validation on every call.
+          minimum: 0
+          description: Maximum time the CP-SAT solver may run before returning its best solution. Must be greater than 0.
+          example: 120.0
+        solver_num_workers:
+          type: integer
+          minimum: 1
+          maximum: 64
+          description: Number of parallel solver worker threads
+          example: 8
+        updated_at:
+          type: string
+          format: date-time
+          description: When these settings were last updated
+        weekly_min_hours:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          description: Soft minimum working hours per calendar week (null disables)
+          example: null
+        weekly_max_hours:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          description: Soft maximum working hours per calendar week (null disables)
+          example: null
+        weekly_hours_target_weight:
+          type: integer
+          minimum: 0
+          description: Objective weight for meeting the weekly hours band above
+          example: 1000
+        preference_weight:
+          type: integer
+          minimum: 0
+          description: Objective weight for respecting an employee's preferred_off days/shifts (soft; never blocks assignment)
+          example: 300
+        wish_weight:
+          type: integer
+          minimum: 0
+          description: >
+            Objective reward for fulfilling an employee's shift wish (soft;
+            never forces the assignment). 0 ignores wishes entirely; raising it
+            towards equality_weight makes wishes near-mandatory.
+          example: 20000
+        skill_downgrade_weight:
+          type: integer
+          minimum: 0
+          description: Objective weight penalizing covering a requirement with a higher-level capability from the same skill_group instead of an exact match
+          example: 200
+        fatigue_weight:
+          type: integer
+          minimum: 0
+          description: Objective weight on the worst-off employee's accumulated fatigue (ergonomic factor; minimax, not a sum)
+          example: 100
+        night_shift_fatigue_multiplier:
+          type: number
+          format: double
+          minimum: 1.0
+          description: Multiplier applied to a night shift's fatigue cost relative to a day shift of the same length
+          example: 2.0
+        shift_continuity_weight:
+          type: integer
+          minimum: 0
+          description: Reward for an employee working the same shift on consecutive days
+          example: 500
+        shift_continuity_week_bonus:
+          type: integer
+          minimum: 0
+          description: Additional bonus for a 7+ consecutive day streak on the same shift
+          example: 2000
+
+    UpdatePlannerSettingsRequest:
+      type: object
+      required:
+        - night_shift_recovery_days
+        - min_rest_hours
+        - max_consecutive_days
+        - max_working_days_per_week
+        - equality_weight
+        - priority_weights
+        - monthly_hours_target_weight
+        - solver_time_limit_seconds
+        - solver_num_workers
+      properties:
+        night_shift_recovery_days:
+          type: integer
+          minimum: 0
+          maximum: 7
+        min_rest_hours:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 24
+        max_consecutive_days:
+          type: integer
+          minimum: 0
+          maximum: 14
+        max_working_days_per_week:
+          type: integer
+          minimum: 0
+          maximum: 7
+        equality_weight:
+          type: integer
+          minimum: 0
+        priority_weights:
+          $ref: '#/components/schemas/PriorityWeights'
+        monthly_hours_target_weight:
+          type: integer
+          minimum: 0
+        solver_time_limit_seconds:
+          type: number
+          format: double
+          # Strictly greater than zero. Expressed in prose rather than as
+          # `exclusiveMinimum: true`, which is OpenAPI 3.0's boolean form: the
+          # MCP server generates JSON Schema 2020-12 tools from this document,
+          # and there `exclusiveMinimum` must be a number, so the boolean form
+          # makes the generated tool fail validation on every call.
+          minimum: 0
+        solver_num_workers:
+          type: integer
+          minimum: 1
+          maximum: 64
+        weekly_min_hours:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+        weekly_max_hours:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+        weekly_hours_target_weight:
+          type: integer
+          minimum: 0
+          default: 1000
+        preference_weight:
+          type: integer
+          minimum: 0
+          default: 300
+        wish_weight:
+          type: integer
+          minimum: 0
+          default: 20000
+        skill_downgrade_weight:
+          type: integer
+          minimum: 0
+          default: 200
+        fatigue_weight:
+          type: integer
+          minimum: 0
+          default: 100
+        night_shift_fatigue_multiplier:
+          type: number
+          format: double
+          minimum: 1.0
+          default: 2.0
+        shift_continuity_weight:
+          type: integer
+          minimum: 0
+          default: 500
+        shift_continuity_week_bonus:
+          type: integer
+          minimum: 0
+          default: 2000
+
+    ListTasksResponse:
+      type: object
+      required:
+        - tasks
+        - count
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningTaskResponse'
+          description: List of planning tasks ordered by creation date descending
+        count:
+          type: integer
+          description: Total number of tasks
+          example: 5
+
+    EmployeeDetail:
+      allOf:
+        - $ref: '#/components/schemas/Employee'
+        - type: object
+          properties:
+            capabilities:
+              type: array
+              items:
+                $ref: '#/components/schemas/Capability'
+            available_shifts:
+              type: array
+              items:
+                $ref: '#/components/schemas/Shift'
+            unavailabilities:
+              type: array
+              items:
+                $ref: '#/components/schemas/Unavailability'
+
+    CreateEmployeeRequest:
+      type: object
+      required:
+        - name
+        - email
+        - monthly_working_hours
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 255
+          example: "john.doe@hospital.com"
+        monthly_working_hours:
+          type: number
+          format: double
+          description: Monthly working hours for the employee
+          example: 160.0
+
+    UpdateEmployeeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 255
+          example: "john.doe@hospital.com"
+        monthly_working_hours:
+          type: number
+          format: double
+          description: Monthly working hours for the employee
+          example: 160.0
+
+    Shift:
+      type: object
+      required:
+        - id
+        - name
+        - short_name
+        - color
+        - weekday_times
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Shift name
+          example: "Morning (8:00 - 16:00)"
+        short_name:
+          type: string
+          description: Short abbreviation for the shift
+          maxLength: 10
+          example: "M"
+        color:
+          type: string
+          description: Color coding as hex value
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#3B82F6"
+        order:
+          type: integer
+          description: Display order for the shift (lower values appear first)
+          default: 0
+          example: 1
+        weekday_times:
+          type: array
+          description: Start/end times per weekday for this shift
+          items:
+            $ref: '#/components/schemas/WeekdayTime'
+
+    WeekdayTime:
+      type: object
+      required:
+        - weekday
+        - start_time
+        - end_time
+        - min_employees
+      properties:
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Weekday number (0=Monday, 1=Tuesday, ..., 6=Sunday)
+          example: 0
+        start_time:
+          type: string
+          pattern: '^\d{2}:\d{2}(:\d{2})?$'
+          description: Shift start time in HH:MM or HH:MM:SS format
+          example: "06:00"
+        end_time:
+          type: string
+          pattern: '^\d{2}:\d{2}(:\d{2})?$'
+          description: Shift end time in HH:MM or HH:MM:SS format
+          example: "14:00"
+        min_employees:
+          type: integer
+          minimum: 0
+          default: 1
+          description: Minimum number of employees required for this shift on this weekday
+          example: 1
+        max_employees:
+          type: integer
+          nullable: true
+          minimum: 0
+          default: null
+          description: Maximum number of employees allowed for this shift on this weekday (null = no limit)
+          example: 5
+        free_days_after_shift:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+          description: Number of consecutive days an employee should be kept free/rest after working this shift on this weekday (0 = no forced recovery days)
+          example: 0
+
+    SetWeekdayTimeRequest:
+      type: object
+      required:
+        - weekday
+        - start_time
+        - end_time
+      properties:
+        weekday:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: Weekday number (0=Monday, 1=Tuesday, ..., 6=Sunday)
+          example: 0
+        start_time:
+          type: string
+          pattern: '^\d{2}:\d{2}(:\d{2})?$'
+          description: Shift start time in HH:MM or HH:MM:SS format
+          example: "06:00"
+        end_time:
+          type: string
+          pattern: '^\d{2}:\d{2}(:\d{2})?$'
+          description: Shift end time in HH:MM or HH:MM:SS format
+          example: "14:00"
+        min_employees:
+          type: integer
+          minimum: 0
+          default: 1
+          description: Minimum number of employees required (default 1)
+          example: 1
+        max_employees:
+          type: integer
+          nullable: true
+          minimum: 0
+          default: null
+          description: Maximum number of employees allowed (null = no limit)
+          example: 5
+        free_days_after_shift:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 0
+          description: Number of consecutive days an employee should be kept free/rest after working this shift (0-5, default 0)
+          example: 0
+
+    CreateShiftRequest:
+      type: object
+      required:
+        - name
+        - short_name
+        - color
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "Morning (8:00 - 16:00)"
+        short_name:
+          type: string
+          minLength: 1
+          maxLength: 10
+          example: "M"
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#3B82F6"
+        order:
+          type: integer
+          description: Display order for the shift (lower values appear first)
+          default: 0
+          example: 1
+
+    Capability:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Capability name
+          example: "MRT"
+        level:
+          type: integer
+          minimum: 1
+          default: 1
+          description: >
+            Ordinal skill level. Capabilities sharing the same skill_group are
+            treated as substitutable tiers of the same skill by the optimizer's
+            skill-downgrade objective (e.g. "Registered Nurse" level 3,
+            "Practical Nurse" level 2, "Assistant Nurse" level 1, all grouped
+            "nursing"). Unused for capabilities without a skill_group.
+          example: 1
+        skill_group:
+          type: string
+          nullable: true
+          description: >
+            Groups capabilities into substitutable skill tiers (see `level`).
+            Capabilities without a shared skill_group never substitute for one
+            another, so leaving this null keeps the original strict-match
+            behavior.
+          example: null
+
+    CreateCapabilityRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "MRT"
+        level:
+          type: integer
+          minimum: 1
+          default: 1
+        skill_group:
+          type: string
+          nullable: true
+
+    Workstation:
+      type: object
+      required:
+        - id
+        - name
+        - available
+        - active_shift_ids
+        - priority
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Workstation name
+          example: "MRT Room 1"
+        available:
+          type: boolean
+          description: Whether the workstation is available for use
+        active_shift_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of active shift IDs the workstation is working in
+        priority:
+          type: string
+          enum: [high, medium, low]
+          default: medium
+          description: Scheduling priority for the optimizer
+        min_employees:
+          type: integer
+          minimum: 0
+          default: 1
+          description: Minimum number of employees that should be scheduled at this workstation per shift (soft constraint)
+          example: 1
+        max_employees:
+          type: integer
+          nullable: true
+          minimum: 0
+          default: null
+          description: Maximum number of employees allowed at this workstation per shift (null = no limit)
+          example: 3
+
+    WorkstationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Workstation'
+        - type: object
+          properties:
+            required_capabilities:
+              type: array
+              items:
+                $ref: '#/components/schemas/Capability'
+
+    CreateWorkstationRequest:
+      type: object
+      required:
+        - name
+        - available
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "MRT Room 1"
+        available:
+          type: boolean
+        active_shift_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of shift IDs the workstation is active in
+          default: []
+        priority:
+          type: string
+          enum: [high, medium, low]
+          default: medium
+          description: Scheduling priority for the optimizer
+        min_employees:
+          type: integer
+          minimum: 0
+          default: 1
+          description: Minimum number of employees that should be scheduled at this workstation per shift (soft constraint)
+        max_employees:
+          type: integer
+          nullable: true
+          minimum: 0
+          default: null
+          description: Maximum number of employees allowed at this workstation per shift (null = no limit)
+
+    UpdateWorkstationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "MRT Room 1"
+        available:
+          type: boolean
+        active_shift_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of shift IDs the workstation is active in. Set to empty array to clear.
+        priority:
+          type: string
+          enum: [high, medium, low]
+          description: Scheduling priority for the optimizer
+        min_employees:
+          type: integer
+          minimum: 0
+          description: Minimum number of employees that should be scheduled at this workstation per shift (soft constraint)
+        max_employees:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Maximum number of employees allowed at this workstation per shift (null = no limit)
+
+    WorkstationUnavailability:
+      type: object
+      required:
+        - id
+        - workstation_id
+        - unavailable_from
+        - unavailable_to
+      properties:
+        id:
+          type: string
+          format: uuid
+        workstation_id:
+          type: string
+          format: uuid
+          description: ID of the workstation that is unavailable
+        unavailable_from:
+          type: string
+          format: date
+          description: First date of the unavailability period (YYYY-MM-DD, inclusive)
+        unavailable_to:
+          type: string
+          format: date
+          description: Last date of the unavailability period (YYYY-MM-DD, inclusive)
+
+    CreateWorkstationUnavailabilityRequest:
+      type: object
+      required:
+        - unavailable_from
+        - unavailable_to
+      properties:
+        unavailable_from:
+          type: string
+          format: date
+          description: First date of the unavailability period (YYYY-MM-DD, inclusive)
+        unavailable_to:
+          type: string
+          format: date
+          description: Last date of the unavailability period (YYYY-MM-DD, inclusive)
+
+    Unavailability:
+      type: object
+      required:
+        - id
+        - employee_id
+        - unavailable_date
+        - shift_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+          description: ID of the employee who is unavailable
+        unavailable_date:
+          type: string
+          format: date
+          description: Date of unavailability (YYYY-MM-DD)
+        shift_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional specific shift ID. If null, entire day is unavailable
+        is_soft_preference:
+          type: boolean
+          default: false
+          description: >
+            When true, this is a soft preference (the optimizer may still assign
+            the employee here under pressure, at a penalty) rather than a hard
+            block. Defaults to false, i.e. a hard block as before.
+
+    CreateUnavailabilityRequest:
+      type: object
+      required:
+        - employee_id
+        - unavailable_date
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        unavailable_date:
+          type: string
+          format: date
+          description: Date of unavailability (YYYY-MM-DD)
+        shift_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional specific shift ID. If omitted, entire day is unavailable
+        is_soft_preference:
+          type: boolean
+          default: false
+          description: >
+            When true, the optimizer treats this as a preference to avoid
+            (soft) instead of a hard block — it may still assign the
+            employee here under pressure, at a penalty.
+
+    ShiftWish:
+      type: object
+      required:
+        - id
+        - employee_id
+        - shift_id
+        - wish_date
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+          description: ID of the employee who made the wish
+        shift_id:
+          type: string
+          format: uuid
+          description: ID of the shift the employee wishes to work
+        wish_date:
+          type: string
+          format: date
+          description: Date the employee wishes to work the shift (YYYY-MM-DD)
+
+    CreateShiftWishRequest:
+      type: object
+      required:
+        - employee_id
+        - shift_id
+        - wish_date
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        shift_id:
+          type: string
+          format: uuid
+          description: ID of the shift the employee wishes to work
+        wish_date:
+          type: string
+          format: date
+          description: Date the employee wishes to work the shift (YYYY-MM-DD)
+
+    WishSettingsResponse:
+      type: object
+      required:
+        - mode
+        - updated_at
+      properties:
+        mode:
+          $ref: '#/components/schemas/WishMode'
+        window_start:
+          type: string
+          format: date
+          nullable: true
+          description: First date wishes may be placed for, inclusive. Only meaningful when mode is date_range.
+        window_end:
+          type: string
+          format: date
+          nullable: true
+          description: Last date wishes may be placed for, inclusive. Only meaningful when mode is date_range.
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateWishSettingsRequest:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: '#/components/schemas/WishMode'
+        window_start:
+          type: string
+          format: date
+          nullable: true
+          description: Required when mode is date_range; must be on or before window_end.
+        window_end:
+          type: string
+          format: date
+          nullable: true
+          description: Required when mode is date_range; must be on or after window_start.
+
+    WishMode:
+      type: string
+      enum:
+        - enabled
+        - disabled
+        - date_range
+      description: >
+        Whether shift wishes may be placed at all: `enabled` for any date,
+        `disabled` not at all, `date_range` only for dates within
+        [window_start, window_end]. Applies to every role, `shift-admin` included.
+
+    TaskDTO:
+      type: object
+      required:
+        - planning_period
+        - shifts
+        - workstations
+        - employees
+      properties:
+        planning_period:
+          $ref: '#/components/schemas/PlanningPeriod'
+        shifts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShiftTask'
+          description: List of shifts for the optimization request
+        workstations:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkstationTask'
+          description: List of workstations for the optimization request
+        employees:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeTask'
+          description: List of employees for the optimization request
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CapabilityTask'
+          description: >
+            Capability catalog with skill-level metadata, used by the optimizer's
+            skill-downgrade objective. Empty/omitted means no skill-level
+            substitution is attempted (equivalent to today's plain match).
+        constraints:
+          $ref: '#/components/schemas/ConstraintTask'
+
+    CapabilityTask:
+      type: object
+      required:
+        - id
+        - level
+      properties:
+        id:
+          type: string
+          description: Capability name (matches the identifiers used in skills/required_skills)
+        level:
+          type: integer
+          minimum: 1
+        skill_group:
+          type: string
+          nullable: true
+
+    PlanningPeriod:
+      type: object
+      required:
+        - start_date
+        - end_date
+      properties:
+        start_date:
+          type: string
+          format: date
+          description: Start date of the planning period
+          example: "2026-06-09"
+        end_date:
+          type: string
+          format: date
+          description: End date of the planning period
+          example: "2026-07-09"
+
+    ShiftTask:
+      type: object
+      required:
+        - id
+        - name
+        - is_night_shift
+        - weekday_times
+      properties:
+        id:
+          type: string
+          description: Shift identifier
+        name:
+          type: string
+          description: Shift name
+          example: "Morning (8:00 - 16:00)"
+        is_night_shift:
+          type: boolean
+          description: Whether this is a night shift
+          example: false
+        weekday_times:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShiftWeekdayTimeTask'
+          description: Per-weekday time and staffing configuration for this shift
+
+    ShiftWeekdayTimeTask:
+      type: object
+      required:
+        - weekday
+        - start_time
+        - end_time
+        - min_employees
+      properties:
+        weekday:
+          type: string
+          description: Weekday number this entry applies to ('0'=Monday ... '6'=Sunday)
+          example: "0"
+        start_time:
+          type: string
+          description: Shift start time on this weekday
+          example: "06:00"
+        end_time:
+          type: string
+          description: Shift end time on this weekday
+          example: "14:00"
+        min_employees:
+          type: integer
+          description: Minimum employees required for this shift on this weekday
+          example: 1
+        max_employees:
+          type: integer
+          nullable: true
+          description: Maximum employees allowed for this shift on this weekday (null = unlimited)
+        free_days_after_shift:
+          type: integer
+          description: Number of consecutive rest days required after working this shift on this weekday
+          example: 0
+
+    WorkstationTask:
+      type: object
+      required:
+        - id
+        - name
+        - required_skills
+        - priority
+        - operating_shifts
+      properties:
+        id:
+          type: string
+          description: Workstation identifier
+        name:
+          type: string
+          description: Workstation name
+          example: "MRT Room 1"
+        required_skills:
+          type: array
+          items:
+            type: string
+          description: List of required capability names
+          example: ["MRT"]
+        priority:
+          type: string
+          description: Workstation priority level
+          example: "medium"
+        operating_shifts:
+          type: array
+          items:
+            type: string
+          description: List of shift IDs this workstation operates in
+
+    EmployeeTask:
+      type: object
+      required:
+        - id
+        - name
+        - skills
+        - available_shifts
+        - unavailability
+        - monthly_working_hours
+      properties:
+        id:
+          type: string
+          description: Employee identifier
+        name:
+          type: string
+          description: Employee full name
+          example: "John Doe"
+        skills:
+          type: array
+          items:
+            type: string
+          description: List of capability names the employee possesses
+          example: ["MRT", "CT"]
+        available_shifts:
+          type: array
+          items:
+            type: string
+          description: List of shift IDs the employee is available for
+        unavailability:
+          type: array
+          items:
+            type: string
+          description: List of unavailability entries for the employee
+        monthly_working_hours:
+          type: number
+          format: double
+          description: Monthly working hours for the employee
+          example: 160.0
+        preferred_off:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreferredOffTask'
+          description: >
+            Days (optionally a specific shift) the employee would rather not
+            work. Soft — unlike unavailability, never blocks assignment.
+        wishes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShiftWishTask'
+          description: >
+            Shifts the employee wishes to work on specific dates. Soft — the
+            optimizer rewards fulfilling them (wish_weight), never forces them.
+
+    ShiftWishTask:
+      type: object
+      required:
+        - date
+        - shift_id
+      properties:
+        date:
+          type: string
+          format: date
+        shift_id:
+          type: string
+          description: The shift the employee wishes to work on this date
+
+    PreferredOffTask:
+      type: object
+      required:
+        - date
+      properties:
+        date:
+          type: string
+          format: date
+        shift_id:
+          type: string
+          nullable: true
+          description: If omitted, the preference applies to the whole day
+
+    ConstraintTask:
+      type: object
+      description: >
+        Optimizer constraint/objective configuration. All fields are optional;
+        omitted fields fall back to the optimizer's built-in defaults (see
+        planner/shift_planner/models.py ConstraintConfig).
+      properties:
+        night_shift_recovery_days:
+          type: integer
+          minimum: 0
+          maximum: 7
+        min_rest_hours:
+          type: number
+          format: double
+        max_consecutive_days:
+          type: integer
+          minimum: 0
+        max_working_days_per_week:
+          type: integer
+          minimum: 0
+          maximum: 7
+        equality_weight:
+          type: integer
+          minimum: 0
+        priority_weights:
+          type: object
+          additionalProperties:
+            type: integer
+        monthly_hours_target_weight:
+          type: integer
+          minimum: 0
+        solver_time_limit_seconds:
+          type: number
+          format: double
+        solver_num_workers:
+          type: integer
+          minimum: 1
+        weekly_min_hours:
+          type: number
+          format: double
+          nullable: true
+        weekly_max_hours:
+          type: number
+          format: double
+          nullable: true
+        weekly_hours_target_weight:
+          type: integer
+          minimum: 0
+        preference_weight:
+          type: integer
+          minimum: 0
+        skill_downgrade_weight:
+          type: integer
+          minimum: 0
+        fatigue_weight:
+          type: integer
+          minimum: 0
+        night_shift_fatigue_multiplier:
+          type: number
+          format: double
+          minimum: 1.0
+        shift_continuity_weight:
+          type: integer
+          minimum: 0
+        shift_continuity_week_bonus:
+          type: integer
+          minimum: 0
+        wish_weight:
+          type: integer
+          minimum: 0
+          description: Reward for fulfilling an employee's shift wish (0 disables wish handling)
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Error message
+        details:
+          type: string
+          description: Additional error details (optional)
+
+    ImportRowError:
+      type: object
+      required:
+        - row
+        - message
+      properties:
+        row:
+          type: integer
+          description: 1-indexed spreadsheet row number (including the header row)
+        message:
+          type: string
+          description: Why the row was skipped, or a warning about unmatched names
+
+    ImportResult:
+      type: object
+      required:
+        - created
+        - skipped
+        - errors
+      properties:
+        created:
+          type: integer
+          description: Number of rows successfully created
+        skipped:
+          type: integer
+          description: Number of rows skipped due to validation errors
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportRowError'
+
+    EmployeeShiftAssignment:
+      type: object
+      required:
+        - id
+        - employee_id
+        - shift_id
+        - date
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique assignment identifier
+        employee_id:
+          type: string
+          format: uuid
+          description: ID of the assigned employee
+        shift_id:
+          type: string
+          format: uuid
+          description: ID of the assigned shift
+        date:
+          type: string
+          format: date
+          description: Date of the shift assignment (YYYY-MM-DD)
+          example: "2026-06-09"
+
+    CreateShiftAssignmentRequest:
+      type: object
+      required:
+        - shift_id
+        - date
+      properties:
+        shift_id:
+          type: string
+          format: uuid
+          description: ID of the shift to assign
+        date:
+          type: string
+          format: date
+          description: Date of the shift assignment (YYYY-MM-DD)
+          example: "2026-06-09"
+
+    ImportShiftAssignmentRow:
+      type: object
+      required:
+        - employee
+        - shift
+        - date
+      properties:
+        employee:
+          type: string
+          description: Employee full name, email or UUID, as written in the source document
+          example: "Anna Meier"
+        shift:
+          type: string
+          description: Shift name, short name (roster code) or UUID, as written in the source document
+          example: "N"
+        date:
+          type: string
+          format: date
+          description: Date of the assignment (YYYY-MM-DD)
+          example: "2026-09-01"
+
+    ImportShiftAssignmentsRequest:
+      type: object
+      required:
+        - assignments
+      properties:
+        assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportShiftAssignmentRow'
+        dry_run:
+          type: boolean
+          default: false
+          description: Resolve and validate everything but write nothing, so the result can be reviewed first
+        replace_existing:
+          type: boolean
+          default: false
+          description: Overwrite an employee's existing assignment on the same date instead of skipping the row
+
+    ImportShiftAssignmentsMatch:
+      type: object
+      properties:
+        input:
+          type: string
+          description: The spelling used in the source document
+        matched:
+          type: string
+          description: The name of the record it was matched to
+        id:
+          type: string
+          format: uuid
+
+    ImportShiftAssignmentsIssue:
+      type: object
+      properties:
+        row:
+          type: integer
+          description: 1-based index of the offending row in the request
+        employee:
+          type: string
+        shift:
+          type: string
+        date:
+          type: string
+        message:
+          type: string
+
+    ImportShiftAssignmentsResult:
+      type: object
+      properties:
+        dry_run:
+          type: boolean
+        total:
+          type: integer
+        resolved:
+          type: integer
+          description: Rows that resolved to a real employee, shift and date
+        created:
+          type: integer
+          description: Rows actually written (always 0 for a dry run)
+        replaced:
+          type: integer
+          description: Rows that replaced an existing assignment on the same date
+        skipped:
+          type: integer
+        from_date:
+          type: string
+          format: date
+          nullable: true
+        to_date:
+          type: string
+          format: date
+          nullable: true
+        unmatched_employees:
+          type: array
+          items:
+            type: string
+        unmatched_shifts:
+          type: array
+          items:
+            type: string
+        matched_employees:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportShiftAssignmentsMatch'
+        matched_shifts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportShiftAssignmentsMatch'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportShiftAssignmentsIssue'
+
+    ConfirmedShiftPlanPaginatedResponse:
+      type: object
+      required:
+        - data
+        - total
+        - limit
+        - offset
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfirmedShiftPlan'
+          description: List of confirmed shift plans for the current page
+        total:
+          type: integer
+          description: Total number of confirmed shift plans matching the query
+          example: 150
+        limit:
+          type: integer
+          description: Maximum number of results returned
+          example: 50
+        offset:
+          type: integer
+          description: Number of results skipped
+          example: 0
+
+    ConfirmedShiftPlan:
+      type: object
+      required:
+        - id
+        - employee_id
+        - shift_id
+        - date
+        - is_present
+        - creation_type
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique confirmed shift plan identifier
+        employee_id:
+          type: string
+          format: uuid
+          description: ID of the employee
+        shift_id:
+          type: string
+          format: uuid
+          description: "ID of the shift, or null on a day the employee works no shift — see absence_type"
+          nullable: true
+        workstation_id:
+          type: string
+          format: uuid
+          description: ID of the workstation the employee is assigned to for this shift
+          nullable: true
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        date:
+          type: string
+          format: date
+          description: Date of the confirmed shift plan (YYYY-MM-DD)
+          example: "2026-06-09"
+        is_present:
+          type: boolean
+          description: Whether the employee was actually present (true) or only planned but not there (false)
+          example: true
+        absence_type:
+          type: string
+          description: "Type of absence when is_present is false. One of: sick, day_off, holiday, unknown, unavailable, free"
+          enum:
+            - sick
+            - day_off
+            - holiday
+            - unknown
+            - unavailable
+            - free
+          nullable: true
+          example: null
+        creation_type:
+          type: string
+          description: "How the record was created. One of: manual, automated"
+          enum:
+            - manual
+            - automated
+          example: "manual"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the record was created
+          example: "2026-06-09T08:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the record was last updated
+          example: "2026-06-09T08:00:00Z"
+
+    CreateConfirmedShiftPlanRequest:
+      type: object
+      required:
+        - shift_id
+        - date
+      properties:
+        shift_id:
+          type: string
+          format: uuid
+          description: ID of the shift
+        workstation_id:
+          type: string
+          format: uuid
+          description: ID of the workstation the employee is assigned to for this shift
+          nullable: true
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        date:
+          type: string
+          format: date
+          description: Date of the confirmed shift plan (YYYY-MM-DD)
+          example: "2026-06-09"
+        is_present:
+          type: boolean
+          description: Whether the employee was actually present. Defaults to true.
+          default: true
+          example: true
+        absence_type:
+          type: string
+          description: "Type of absence when is_present is false. Required when is_present is false. One of: sick, day_off, holiday, unknown, unavailable, free"
+          enum:
+            - sick
+            - day_off
+            - holiday
+            - unknown
+            - unavailable
+            - free
+          nullable: true
+          example: null
+        creation_type:
+          type: string
+          description: How the record was created. Defaults to manual.
+          enum:
+            - manual
+            - automated
+          default: manual
+          example: "manual"
+
+    UpdateConfirmedShiftPlanRequest:
+      type: object
+      properties:
+        shift_id:
+          type: string
+          format: uuid
+          description: ID of the shift
+          nullable: true
+        workstation_id:
+          type: string
+          format: uuid
+          description: ID of the workstation the employee is assigned to for this shift. Pass null to clear the workstation assignment.
+          nullable: true
+        is_present:
+          type: boolean
+          description: Whether the employee was actually present
+          nullable: true
+        absence_type:
+          type: string
+          description: "Type of absence when is_present is false. One of: sick, day_off, holiday, unknown, unavailable, free"
+          enum:
+            - sick
+            - day_off
+            - holiday
+            - unknown
+            - unavailable
+            - free
+          nullable: true
+        creation_type:
+          type: string
+          description: "How the record was created. One of: manual, automated"
+          enum:
+            - manual
+            - automated
+          nullable: true
+
+    OptimizedShiftResultResponse:
+      type: object
+      required:
+        - id
+        - result
+        - creation_date
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the stored optimization result
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        result:
+          $ref: '#/components/schemas/TaskResultDto'
+        creation_date:
+          type: string
+          format: date-time
+          description: Timestamp when the optimization result was stored
+          example: "2026-06-12T19:00:00Z"
+
+    PaginatedOptimizedShiftResultsResponse:
+      type: object
+      required:
+        - data
+        - total
+        - limit
+        - offset
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OptimizedShiftResultResponse'
+          description: List of optimized shift results for the current page
+        total:
+          type: integer
+          description: Total number of stored optimization results
+          example: 25
+        limit:
+          type: integer
+          description: Maximum number of results returned
+          example: 50
+        offset:
+          type: integer
+          description: Number of results skipped
+          example: 0
+
+    TaskResultDto:
+      type: object
+      required:
+        - status
+        - objective_value
+        - planning_period
+        - schedule
+        - employee_summary
+      properties:
+        status:
+          type: string
+          description: Status of the optimization result
+          example: "optimal"
+        objective_value:
+          type: number
+          format: double
+          description: The objective value of the optimization
+          example: 42.5
+        planning_period:
+          $ref: '#/components/schemas/PlanningPeriodResult'
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/DaySchedule'
+          description: Day-by-day schedule across the planning period
+        employee_summary:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeSummary'
+          description: Per-employee summary across the planning period
+        employee_plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeDailyPlan'
+          description: Per-employee daily plan covering every day in the planning period for every employee
+        message:
+          type: string
+          nullable: true
+          description: Optional message from the optimizer
+          example: null
+
+    EmployeeDailyPlan:
+      type: object
+      required:
+        - employee_id
+        - employee_name
+        - daily_plan
+      properties:
+        employee_id:
+          type: string
+          description: Employee identifier
+        employee_name:
+          type: string
+          description: Employee name
+        daily_plan:
+          type: array
+          items:
+            $ref: '#/components/schemas/DailyPlanEntry'
+          description: One entry per day in the planning period
+
+    DailyPlanEntry:
+      type: object
+      required:
+        - date
+        - status
+      properties:
+        date:
+          type: string
+          description: Date of the entry (YYYY-MM-DD)
+          example: "2026-06-09"
+        status:
+          type: string
+          description: >
+            Either 'assigned' (with shift + workstation details) or 'free' (no
+            shift planned for that day). Results produced before the two were
+            merged also carry 'not_assigned', which meant "no shift planned,
+            and not a mandated rest day" — treat it as 'free'.
+          enum:
+            - assigned
+            - free
+            - not_assigned
+          example: "assigned"
+        shift_id:
+          type: string
+          nullable: true
+          description: Shift identifier (only set when status is 'assigned')
+        shift_name:
+          type: string
+          nullable: true
+          description: Shift name (only set when status is 'assigned')
+        workstation_id:
+          type: string
+          nullable: true
+          description: Workstation identifier (only set when status is 'assigned')
+        workstation_name:
+          type: string
+          nullable: true
+          description: Workstation name (only set when status is 'assigned')
+
+    PlanningPeriodResult:
+      type: object
+      required:
+        - start_date
+        - end_date
+      properties:
+        start_date:
+          type: string
+          description: Start date of the planning period
+          example: "2026-06-09"
+        end_date:
+          type: string
+          description: End date of the planning period
+          example: "2026-07-09"
+
+    DaySchedule:
+      type: object
+      required:
+        - date
+        - weekday
+        - shifts
+      properties:
+        date:
+          type: string
+          description: Date of the schedule entry
+          example: "2026-06-09"
+        weekday:
+          type: string
+          description: Weekday name
+          example: "Monday"
+        shifts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShiftSchedule'
+          description: Shift assignments for this day
+
+    ShiftSchedule:
+      type: object
+      required:
+        - shift_id
+        - shift_name
+        - assigned_dates
+      properties:
+        shift_id:
+          type: string
+          description: Shift identifier
+        shift_name:
+          type: string
+          description: Shift name
+          example: "Morning (8:00 - 16:00)"
+        assigned_dates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShiftAssignmentResult'
+          description: Employee-to-workstation assignments for this shift
+
+    ShiftAssignmentResult:
+      type: object
+      required:
+        - date
+        - employee_id
+        - employee_name
+        - workstation_id
+        - workstation_name
+      properties:
+        date:
+          type: string
+          description: Date of the assignment
+          example: "2026-06-09"
+        employee_id:
+          type: string
+          description: Employee identifier
+        employee_name:
+          type: string
+          description: Employee full name
+          example: "John Doe"
+        workstation_id:
+          type: string
+          description: Workstation identifier
+        workstation_name:
+          type: string
+          description: Workstation name
+          example: "MRT Room 1"
+
+    EmployeeSummary:
+      type: object
+      required:
+        - employee_id
+        - employee_name
+        - total_shifts
+        - night_shifts
+        - total_working_hours
+        - per_shift
+        - assigned_dates
+      properties:
+        employee_id:
+          type: string
+          description: Employee identifier
+        employee_name:
+          type: string
+          description: Employee full name
+          example: "John Doe"
+        total_shifts:
+          type: integer
+          description: Total number of shifts assigned
+          example: 20
+        night_shifts:
+          type: integer
+          description: Number of night shifts assigned
+          example: 2
+        total_working_hours:
+          type: number
+          format: double
+          description: Total working hours across the planning period
+          example: 160.0
+        per_shift:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeShiftSummary'
+          description: Per-shift breakdown
+        assigned_dates:
+          type: array
+          items:
+            type: string
+          description: List of dates the employee is assigned
+          example: ["2026-06-09", "2026-06-10"]
+
+    EmployeeShiftSummary:
+      type: object
+      required:
+        - shift_id
+        - shift_name
+        - total_assignments
+        - assigned_dates
+      properties:
+        shift_id:
+          type: string
+          description: Shift identifier
+        shift_name:
+          type: string
+          description: Shift name
+          example: "Morning (8:00 - 16:00)"
+        total_assignments:
+          type: integer
+          description: Number of assignments for this shift
+          example: 15
+        assigned_dates:
+          type: array
+          items:
+            type: string
+          description: Dates assigned for this shift
+          example: ["2026-06-09", "2026-06-10"]
+
+    WorkstationDailyHours:
+      type: object
+      required:
+        - date
+        - workstation_id
+        - workstation_name
+        - planned_hours
+      properties:
+        date:
+          type: string
+          format: date
+          description: The date of the planned hours
+          example: "2026-06-09"
+        workstation_id:
+          type: string
+          format: uuid
+          description: Unique identifier of the workstation
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        workstation_name:
+          type: string
+          description: Name of the workstation
+          example: "MRT Room 1"
+        planned_hours:
+          type: number
+          format: double
+          description: Total planned working hours for this workstation on this date
+          example: 16.0
+
+    WorkstationDailyEmployees:
+      type: object
+      required:
+        - date
+        - workstation_id
+        - workstation_name
+        - planned_employees
+      properties:
+        date:
+          type: string
+          format: date
+          description: The date of the planned employee count
+          example: "2026-06-09"
+        workstation_id:
+          type: string
+          format: uuid
+          description: Unique identifier of the workstation
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        workstation_name:
+          type: string
+          description: Name of the workstation
+          example: "MRT Room 1"
+        planned_employees:
+          type: integer
+          format: int64
+          description: Number of employees planned for this workstation on this date
+          example: 2
+
+    DailyStaffing:
+      type: object
+      required:
+        - date
+        - employees_working
+        - employees
+        - per_shift
+      properties:
+        date:
+          type: string
+          format: date
+          description: The day this head count is for
+          example: "2026-06-09"
+        employees_working:
+          type: integer
+          format: int64
+          description: Distinct employees working that day, counting everyone marked present whether or not they have a workstation
+          example: 15
+        employees:
+          type: array
+          description: Who is working that day, with shift and workstation names already resolved — no further lookups needed to name anyone
+          items:
+            $ref: '#/components/schemas/WorkingEmployee'
+        per_shift:
+          type: array
+          description: The same head count split by shift. Employees rostered without a shift appear in employees_working only.
+          items:
+            $ref: '#/components/schemas/ShiftDailyStaffing'
+
+    WorkingEmployee:
+      type: object
+      required:
+        - employee_id
+        - employee_name
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        employee_name:
+          type: string
+          example: "Anna Müller"
+        shift_id:
+          type: string
+          format: uuid
+          nullable: true
+        shift_name:
+          type: string
+          nullable: true
+          description: Name of the shift, or null when the person is rostered without one
+          example: "Late shift"
+        workstation_id:
+          type: string
+          format: uuid
+          nullable: true
+        workstation_name:
+          type: string
+          nullable: true
+          description: Name of the workstation, or null when the person is not assigned to one
+          example: "MRT Room 1"
+
+    ShiftDailyStaffing:
+      type: object
+      required:
+        - shift_id
+        - shift_name
+        - employees_working
+      properties:
+        shift_id:
+          type: string
+          format: uuid
+          description: Unique identifier of the shift
+        shift_name:
+          type: string
+          description: Name of the shift
+          example: "Late shift"
+        employees_working:
+          type: integer
+          format: int64
+          description: Distinct employees working this shift on this date
+          example: 4
+
+    AuditLog:
+      type: object
+      required:
+        - id
+        - action
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the audit log event
+        actor:
+          type: string
+          description: Identity of the user who made the request (preferred_username, email, or sub from the OIDC token), if available
+          nullable: true
+          example: "jane.doe"
+        action:
+          type: string
+          description: "The event type, e.g. employee.create, employee.delete, shift.update, workstation.delete, capability.create, planner.optimize"
+          example: "employee.create"
+        entity_type:
+          type: string
+          description: "Type of entity affected, e.g. employee, shift, workstation, capability, planning_task"
+          nullable: true
+          example: "employee"
+        entity_id:
+          type: string
+          description: ID of the affected entity, if applicable
+          nullable: true
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        changes:
+          type: string
+          description: Freeform description of what changed, typically the JSON request body that triggered the event
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the event was recorded
+          example: "2026-06-12T19:00:00Z"
+
+    PaginatedAuditLogsResponse:
+      type: object
+      required:
+        - data
+        - total
+        - limit
+        - offset
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+          description: List of audit log events for the current page
+        total:
+          type: integer
+          description: Total number of matching audit log events
+          example: 128
+        limit:
+          type: integer
+          description: Maximum number of results returned
+          example: 50
+        offset:
+          type: integer
+          description: Number of results skipped
+          example: 0
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: >
+        The `x-access-token` is missing, undecodable, or carries no `tenant` claim —
+        the last meaning the Keycloak user is not a member of any organization. The
+        `error` field says which, because all three are realm configuration
+        problems rather than anything the caller can fix.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: >
+        The caller's realm roles do not permit this operation, or the tenant's
+        shift-wish window is closed for the requested date — the latter applies to
+        every role. Mutating requests require `shift-planner` or `shift-admin`; a
+        `shift-viewer` may only write shift wishes belonging to the employee whose
+        e-mail address matches their own token (`email` / `preferred_username`).
+        Changing the wish window itself requires `shift-admin`. The `error` field
+        carries the reason, including which role is missing.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

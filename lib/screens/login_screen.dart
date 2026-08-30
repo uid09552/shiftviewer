@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n_helpers.dart';
 import '../services/auth_service.dart';
 import 'settings_screen.dart';
 
@@ -12,6 +13,7 @@ class LoginScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final busy = auth.status == AuthStatus.authenticating;
 
     return Scaffold(
@@ -27,11 +29,11 @@ class LoginScreen extends StatelessWidget {
                 Icon(Icons.calendar_month,
                     size: 64, color: theme.colorScheme.primary),
                 const SizedBox(height: 16),
-                Text('Shift Viewer',
+                Text(l10n.appTitle,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),
-                Text('Sign in to view your shift schedule',
+                Text(l10n.signInSubtitle,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(color: theme.colorScheme.outline)),
@@ -39,8 +41,7 @@ class LoginScreen extends StatelessWidget {
                 if (auth.status == AuthStatus.error && auth.errorMessage != null)
                   _errorBox(context, auth.errorMessage!),
                 if (!auth.isLoginSupported)
-                  _errorBox(
-                      context, 'Login is not supported on this platform.'),
+                  _errorBox(context, l10n.loginUnsupported),
                 FilledButton.icon(
                   onPressed:
                       (busy || !auth.isLoginSupported) ? null : auth.login,
@@ -51,7 +52,7 @@ class LoginScreen extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.login),
-                  label: Text(busy ? 'Redirecting…' : 'Sign in'),
+                  label: Text(busy ? l10n.signingIn : l10n.signIn),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -62,7 +63,7 @@ class LoginScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const SettingsScreen()),
                   ),
                   icon: const Icon(Icons.settings, size: 18),
-                  label: const Text('Connection settings'),
+                  label: Text(l10n.connectionSettings),
                 ),
               ],
             ),

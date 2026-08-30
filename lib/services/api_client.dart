@@ -32,15 +32,15 @@ class ShiftApiClient {
   final http.Client _http;
 
   ShiftApiClient(this.settings, {this.accessToken, http.Client? client})
-      : _http = client ?? createHttpClient();
+    : _http = client ?? createHttpClient();
 
   static final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
 
   Uri _uri(String path, [Map<String, String>? query]) {
     final base = settings.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    return Uri.parse('$base$path').replace(
-      queryParameters: (query == null || query.isEmpty) ? null : query,
-    );
+    return Uri.parse(
+      '$base$path',
+    ).replace(queryParameters: (query == null || query.isEmpty) ? null : query);
   }
 
   Map<String, String> get _headers {
@@ -55,8 +55,9 @@ class ShiftApiClient {
       headers['Authorization'] = 'Bearer ${settings.bearerToken.trim()}';
       headers['X-Access-Token'] = settings.bearerToken.trim();
     } else if (settings.username.trim().isNotEmpty) {
-      final creds =
-          base64Encode(utf8.encode('${settings.username}:${settings.password}'));
+      final creds = base64Encode(
+        utf8.encode('${settings.username}:${settings.password}'),
+      );
       headers['Authorization'] = 'Basic $creds';
     }
     return headers;
@@ -66,7 +67,9 @@ class ShiftApiClient {
     final http.Response res;
     final headers = _headers;
     final auth = headers['Authorization'];
-    debugPrint('[api] GET $path  Authorization=${auth == null ? "MISSING" : "${auth.split(' ').first} len=${auth.length}"}');
+    debugPrint(
+      '[api] GET $path  Authorization=${auth == null ? "MISSING" : "${auth.split(' ').first} len=${auth.length}"}',
+    );
     try {
       res = await _http
           .get(_uri(path, query), headers: headers)
@@ -75,9 +78,45 @@ class ShiftApiClient {
       throw ApiException('Network error: $e');
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      debugPrint('[api] GET $path -> ${res.statusCode}. '
-          'www-authenticate=${res.headers['www-authenticate']} '
-          'body=${res.body.length > 300 ? res.body.substring(0, 300) : res.body}');
+      debugPrint(
+        '[api] GET $path -> ${res.statusCode}. '
+        'www-authenticate=${res.headers['www-authenticate']} '
+        'body=${res.body.length > 300 ? res.body.substring(0, 300) : res.body}',
+      );
+      throw ApiException(
+        res.reasonPhrase ?? 'Request failed',
+        statusCode: res.statusCode,
+      );
+    }
+    if (res.body.isEmpty) return null;
+    return jsonDecode(res.body);
+  }
+
+  /// Sends a body-carrying or bodyless write request and decodes the response.
+  Future<dynamic> _send(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final request = http.Request(method, _uri(path))..headers.addAll(_headers);
+    if (body != null) {
+      request.headers['Content-Type'] = 'application/json';
+      request.body = jsonEncode(body);
+    }
+    final http.Response res;
+    try {
+      final streamed = await _http
+          .send(request)
+          .timeout(const Duration(seconds: 15));
+      res = await http.Response.fromStream(streamed);
+    } catch (e) {
+      throw ApiException('Network error: $e');
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      debugPrint(
+        '[api] $method $path -> ${res.statusCode} '
+        'body=${res.body.length > 300 ? res.body.substring(0, 300) : res.body}',
+      );
       throw ApiException(
         res.reasonPhrase ?? 'Request failed',
         statusCode: res.statusCode,
@@ -116,9 +155,9 @@ class ShiftApiClient {
   /// All workstations.
   Future<List<Workstation>> listWorkstations() async {
     final data = await _get('/workstations');
-    return _asList(data)
-        .map((e) => Workstation.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return _asList(
+      data,
+    ).map((e) => Workstation.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   /// Confirmed shift plans for one employee in `[from, to]`.
@@ -127,10 +166,10 @@ class ShiftApiClient {
     DateTime from,
     DateTime to,
   ) async {
-    final data = await _get(
-      '/employees/$employeeId/confirmed-shift-plans',
-      {'from_date': _dateFmt.format(from), 'to_date': _dateFmt.format(to)},
-    );
+    final data = await _get('/employees/$employeeId/confirmed-shift-plans', {
+      'from_date': _dateFmt.format(from),
+      'to_date': _dateFmt.format(to),
+    });
     return _asList(data)
         .map((e) => ConfirmedShiftPlan.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -147,9 +186,96 @@ class ShiftApiClient {
       'limit': '500',
     });
     // This endpoint returns a paginated envelope: { data, total, limit, offset }.
-    final list = data is Map<String, dynamic> ? _asList(data['data']) : _asList(data);
+    final list = data is Map<String, dynamic>
+        ? _asList(data['data'])
+        : _asList(data);
     return list
         .map((e) => ConfirmedShiftPlan.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// The tenant's shift-wish window: whether, and for which dates, employees
+  /// may place wishes. Readable by every role — the UI needs it to decide
+  /// whether to offer the wish picker at all.
+  Future<WishSettings> getWishSettings() async {
+    final data = await _get('/wish-settings');
+    return WishSettings.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Shift wishes in `[from, to]`, optionally for a single employee.
+  Future<List<ShiftWish>> listShiftWishes(
+    DateTime from,
+    DateTime to, {
+    String? employeeId,
+  }) async {
+    final data = await _get('/shift-wishes', {
+      'employee_id': ?employeeId,
+      'from_date': _dateFmt.format(from),
+      'to_date': _dateFmt.format(to),
+    });
+    return _asList(
+      data,
+    ).map((e) => ShiftWish.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Places a wish. Fails with status 409 when the employee already wishes for
+  /// something on [date] — delete that wish first to replace it.
+  Future<ShiftWish> createShiftWish({
+    required String employeeId,
+    required String shiftId,
+    required DateTime date,
+  }) async {
+    final data = await _send('POST', '/shift-wishes', {
+      'employee_id': employeeId,
+      'shift_id': shiftId,
+      'wish_date': _dateFmt.format(date),
+    });
+    return ShiftWish.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteShiftWish(String wishId) async {
+    await _send('DELETE', '/shift-wishes/$wishId');
+  }
+
+  /// Who works each day in `[from, to]` and how many, split per shift —
+  /// `GET /analysis/staffing-per-day`.
+  Future<List<DailyStaffing>> staffingPerDay(DateTime from, DateTime to) async {
+    final data = await _get('/analysis/staffing-per-day', {
+      'from_date': _dateFmt.format(from),
+      'to_date': _dateFmt.format(to),
+    });
+    return _asList(
+      data,
+    ).map((e) => DailyStaffing.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Planned hours per day per workstation in `[from, to]`.
+  Future<List<WorkstationDailyHours>> plannedHoursPerWorkstation(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final data = await _get('/analysis/planned-hours-per-day-per-workstation', {
+      'from_date': _dateFmt.format(from),
+      'to_date': _dateFmt.format(to),
+    });
+    return _asList(data)
+        .map((e) => WorkstationDailyHours.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Planned head count per day per workstation in `[from, to]`.
+  Future<List<WorkstationDailyEmployees>> plannedEmployeesPerWorkstation(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final data = await _get(
+      '/analysis/planned-employees-per-day-per-workstation',
+      {'from_date': _dateFmt.format(from), 'to_date': _dateFmt.format(to)},
+    );
+    return _asList(data)
+        .map(
+          (e) => WorkstationDailyEmployees.fromJson(e as Map<String, dynamic>),
+        )
         .toList();
   }
 

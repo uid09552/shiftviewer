@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../l10n/l10n_helpers.dart';
 import '../services/api_client.dart';
 import '../services/app_settings.dart';
 
@@ -27,6 +28,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _testResult;
   bool _testOk = false;
 
+  /// Empty means "follow the device locale".
+  late String _languageCode;
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _oidcIssuer = TextEditingController(text: s.oidcIssuer);
     _oidcClientId = TextEditingController(text: s.oidcClientId);
     _oidcRedirectUri = TextEditingController(text: s.oidcRedirectUri);
+    _languageCode = s.languageCode;
   }
 
   @override
@@ -67,6 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       oidcClientId: _oidcClientId.text.trim(),
       oidcRedirectUri: _oidcRedirectUri.text.trim(),
       oidcScopes: existing.oidcScopes,
+      languageCode: _languageCode,
     );
   }
 
@@ -75,23 +81,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _testing = true;
       _testResult = null;
     });
+    final l10n = context.l10n;
     final client = ShiftApiClient(_currentDraft());
     try {
       await client.ping();
       setState(() {
         _testOk = true;
-        _testResult = 'Connection successful';
+        _testResult = l10n.connectionSuccessful;
       });
     } on ApiException catch (e) {
+      final code = e.statusCode;
       setState(() {
         _testOk = false;
-        _testResult = 'Failed: ${e.message}'
-            '${e.statusCode != null ? ' (${e.statusCode})' : ''}';
+        _testResult = l10n.connectionFailed(
+            code == null ? e.message : l10n.errorWithCode(e.message, code));
       });
     } catch (e) {
       setState(() {
         _testOk = false;
-        _testResult = 'Failed: $e';
+        _testResult = l10n.connectionFailed('$e');
       });
     } finally {
       client.close();
@@ -107,13 +115,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(l10n.settings),
         actions: [
           TextButton(
             onPressed: _save,
-            child: const Text('Save'),
+            child: Text(l10n.save),
           ),
         ],
       ),
@@ -122,49 +131,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _sectionLabel(context, 'Server'),
+            _sectionLabel(context, l10n.sectionServer),
             TextFormField(
               controller: _baseUrl,
               keyboardType: TextInputType.url,
               autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'API base URL',
+              decoration: InputDecoration(
+                labelText: l10n.apiBaseUrl,
                 hintText: 'http://localhost:8080/api/v1',
-                prefixIcon: Icon(Icons.link),
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.link),
+                border: const OutlineInputBorder(),
               ),
               validator: (v) {
                 final t = v?.trim() ?? '';
-                if (t.isEmpty) return 'Required';
+                if (t.isEmpty) return l10n.fieldRequired;
                 final uri = Uri.tryParse(t);
                 if (uri == null || !uri.hasScheme || !uri.hasAuthority) {
-                  return 'Enter a valid URL';
+                  return l10n.enterValidUrl;
                 }
                 return null;
               },
             ),
             const SizedBox(height: 24),
-            _sectionLabel(context, 'Sign-in (OIDC · PKCE)'),
+            _sectionLabel(context, l10n.sectionSignIn),
             TextFormField(
               controller: _oidcIssuer,
               keyboardType: TextInputType.url,
               autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Issuer / realm URL',
+              decoration: InputDecoration(
+                labelText: l10n.issuerUrl,
                 hintText: 'http://localhost/auth/realms/shift',
-                prefixIcon: Icon(Icons.security),
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.security),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _oidcClientId,
               autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Client ID',
-                helperText: 'Same client as the API gateway · PKCE (S256)',
-                prefixIcon: Icon(Icons.apps),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.clientId,
+                helperText: l10n.clientIdHelper,
+                prefixIcon: const Icon(Icons.apps),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
@@ -172,22 +181,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _oidcRedirectUri,
               keyboardType: TextInputType.url,
               autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Redirect URI',
+              decoration: InputDecoration(
+                labelText: l10n.redirectUri,
                 hintText: 'http://localhost:8900/auth/callback',
-                prefixIcon: Icon(Icons.u_turn_left),
-                border: OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.u_turn_left),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 24),
-            _sectionLabel(context, 'Manual login (fallback)'),
+            _sectionLabel(context, l10n.sectionManualLogin),
             TextFormField(
               controller: _username,
               autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-                prefixIcon: Icon(Icons.person_outline),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.username,
+                prefixIcon: const Icon(Icons.person_outline),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
@@ -195,7 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _password,
               obscureText: _obscurePassword,
               decoration: InputDecoration(
-                labelText: 'Password',
+                labelText: l10n.password,
                 prefixIcon: const Icon(Icons.lock_outline),
                 border: const OutlineInputBorder(),
                 suffixIcon: IconButton(
@@ -211,25 +220,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
             TextFormField(
               controller: _token,
               autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Bearer token (optional)',
-                helperText: 'Used instead of username/password when set',
-                prefixIcon: Icon(Icons.vpn_key_outlined),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.bearerToken,
+                helperText: l10n.bearerTokenHelper,
+                prefixIcon: const Icon(Icons.vpn_key_outlined),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 24),
-            _sectionLabel(context, 'Calendar scope'),
+            _sectionLabel(context, l10n.sectionCalendarScope),
             TextFormField(
               controller: _employeeId,
               autocorrect: false,
-              decoration: const InputDecoration(
-                labelText: 'Employee ID (optional)',
-                helperText:
-                    'Show only this employee\'s roster; leave empty for all',
-                prefixIcon: Icon(Icons.badge_outlined),
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: l10n.employeeIdOptional,
+                helperText: l10n.employeeIdHelper,
+                prefixIcon: const Icon(Icons.badge_outlined),
+                border: const OutlineInputBorder(),
               ),
+            ),
+            const SizedBox(height: 24),
+            _sectionLabel(context, l10n.sectionAppearance),
+            DropdownButtonFormField<String>(
+              initialValue: _languageCode,
+              decoration: InputDecoration(
+                labelText: l10n.language,
+                prefixIcon: const Icon(Icons.translate),
+                border: const OutlineInputBorder(),
+              ),
+              items: [
+                DropdownMenuItem(value: '', child: Text(l10n.languageSystem)),
+                DropdownMenuItem(value: 'en', child: Text(l10n.languageEnglish)),
+                DropdownMenuItem(value: 'de', child: Text(l10n.languageGerman)),
+              ],
+              onChanged: (v) => setState(() => _languageCode = v ?? ''),
             ),
             const SizedBox(height: 24),
             OutlinedButton.icon(
@@ -241,7 +265,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.wifi_tethering),
-              label: const Text('Test connection'),
+              label: Text(l10n.testConnection),
             ),
             if (_testResult != null)
               Padding(

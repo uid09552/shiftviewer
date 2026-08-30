@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../services/shift_data_controller.dart';
+import 'day_paint_selection.dart';
+import 'weekday_header.dart';
 
-/// A month grid (Mon–Sun) with shift markers. Selecting a day calls [onDaySelected].
+/// A month grid (Mon–Sun) with shift markers. Selecting a day calls
+/// [onDaySelected]; long pressing one — and dragging across more of them —
+/// calls [onDaysPainted], which the home screen uses to open the shift wish
+/// editor for every day the finger touched.
 class MonthView extends StatelessWidget {
   final DateTime visibleMonth; // any day within the month to show
   final DateTime? selectedDay;
   final ShiftDataController data;
   final ValueChanged<DateTime> onDaySelected;
+  final ValueChanged<Set<DateTime>>? onDaysPainted;
 
   const MonthView({
     super.key,
@@ -16,6 +21,7 @@ class MonthView extends StatelessWidget {
     required this.selectedDay,
     required this.data,
     required this.onDaySelected,
+    this.onDaysPainted,
   });
 
   @override
@@ -29,10 +35,10 @@ class MonthView extends StatelessWidget {
     final weeks = ((leading + daysInMonth) / 7).ceil();
     final today = dateKey(DateTime.now());
 
-    return Column(
+    final grid = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _WeekdayHeader(),
+        const WeekdayHeader(),
         for (int week = 0; week < weeks; week++)
           Expanded(
             child: Row(
@@ -50,6 +56,10 @@ class MonthView extends StatelessWidget {
           ),
       ],
     );
+
+    return onDaysPainted == null
+        ? grid
+        : DayPaintArea(onCommit: onDaysPainted!, child: grid);
   }
 
   Widget _buildDayCell(BuildContext context, DateTime day, DateTime today) {
@@ -68,44 +78,56 @@ class MonthView extends StatelessWidget {
       }
     }
 
+    // A star in the wished shift's colour marks the days the selected employee
+    // asked for something.
+    final wish = data.wishForDay(day);
+    final wishColor = wish == null
+        ? null
+        : data.shiftById(wish.shiftId)?.displayColor ??
+            theme.colorScheme.primary;
+
     return Padding(
       padding: const EdgeInsets.all(2),
-      child: Material(
-        color: isSelected
-            ? theme.colorScheme.primaryContainer
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
+      child: PaintableDay(
+        day: dateKey(day),
+        child: Material(
+          color: isSelected
+              ? theme.colorScheme.primaryContainer
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          onTap: () => onDaySelected(day),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: isToday
-                  ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-                  : null,
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
-            alignment: Alignment.center,
-            clipBehavior: Clip.hardEdge,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${day.day}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: inMonth
-                          ? theme.colorScheme.onSurface
-                          : theme.colorScheme.outline,
-                      fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => onDaySelected(day),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: isToday
+                    ? Border.all(color: theme.colorScheme.primary, width: 1.5)
+                    : null,
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+              alignment: Alignment.center,
+              clipBehavior: Clip.hardEdge,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${day.day}',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: inMonth
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.outline,
+                        fontWeight:
+                            isToday ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  _MarkerDots(colors: colors, extra: plans.length),
-                ],
+                    const SizedBox(height: 3),
+                    _MarkerDots(colors: colors, wishColor: wishColor),
+                  ],
+                ),
               ),
             ),
           ),
@@ -115,41 +137,17 @@ class MonthView extends StatelessWidget {
   }
 }
 
-class _WeekdayHeader extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final labels = DateFormat.E().dateSymbols.STANDALONESHORTWEEKDAYS;
-    // Dart intl weekday order is Sun..Sat; reorder to Mon..Sun.
-    final ordered = [
-      labels[1], labels[2], labels[3], labels[4], labels[5], labels[6], labels[0],
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          for (final l in ordered)
-            Expanded(
-              child: Center(
-                child: Text(
-                  l,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MarkerDots extends StatelessWidget {
   final List<Color> colors;
-  final int extra;
-  const _MarkerDots({required this.colors, required this.extra});
+
+  /// Colour of the wished shift, or null when the day carries no wish.
+  final Color? wishColor;
+
+  const _MarkerDots({required this.colors, this.wishColor});
 
   @override
   Widget build(BuildContext context) {
-    if (colors.isEmpty) return const SizedBox(height: 8);
+    if (colors.isEmpty && wishColor == null) return const SizedBox(height: 8);
     final shown = colors.take(4).toList();
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -161,6 +159,11 @@ class _MarkerDots extends StatelessWidget {
             height: 6,
             margin: const EdgeInsets.symmetric(horizontal: 1),
             decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+          ),
+        if (wishColor != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 1),
+            child: Icon(Icons.star_rounded, size: 9, color: wishColor),
           ),
       ],
     );

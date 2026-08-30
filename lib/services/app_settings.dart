@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'dart:ui' show Locale;
+
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -50,6 +52,15 @@ class AppSettings {
   /// `shift-org` scope alongside the standard OIDC scopes.
   final String oidcScopes;
 
+  // ---- Appearance ----
+
+  /// UI language as an ISO code (`en`, `de`), or empty to follow the device
+  /// locale. Codes outside [supportedLanguageCodes] fall back to the device.
+  final String languageCode;
+
+  /// Languages the app ships translations for.
+  static const supportedLanguageCodes = ['en', 'de'];
+
   const AppSettings({
     this.baseUrl = defaultApiBase,
     this.username = '',
@@ -60,6 +71,7 @@ class AppSettings {
     this.oidcClientId = 'shift-app',
     this.oidcRedirectUri = webRedirectUri,
     this.oidcScopes = 'openid profile email shift-org',
+    this.languageCode = '',
   });
 
   /// First-run defaults. Backend + IdP are served over HTTPS at
@@ -83,6 +95,11 @@ class AppSettings {
       oidcClientId.trim().isNotEmpty &&
       oidcRedirectUri.trim().isNotEmpty;
 
+  /// The locale to render in, or null to follow the device.
+  Locale? get locale => supportedLanguageCodes.contains(languageCode)
+      ? Locale(languageCode)
+      : null;
+
   List<String> get scopeList =>
       oidcScopes.split(' ').where((s) => s.trim().isNotEmpty).toList();
 
@@ -104,6 +121,7 @@ class AppSettings {
     String? oidcClientId,
     String? oidcRedirectUri,
     String? oidcScopes,
+    String? languageCode,
   }) {
     return AppSettings(
       baseUrl: baseUrl ?? this.baseUrl,
@@ -115,6 +133,7 @@ class AppSettings {
       oidcClientId: oidcClientId ?? this.oidcClientId,
       oidcRedirectUri: oidcRedirectUri ?? this.oidcRedirectUri,
       oidcScopes: oidcScopes ?? this.oidcScopes,
+      languageCode: languageCode ?? this.languageCode,
     );
   }
 
@@ -128,6 +147,7 @@ class AppSettings {
         'oidcClientId': oidcClientId,
         'oidcRedirectUri': oidcRedirectUri,
         'oidcScopes': oidcScopes,
+        'languageCode': languageCode,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -142,6 +162,7 @@ class AppSettings {
       oidcClientId: json['oidcClientId'] as String? ?? def.oidcClientId,
       oidcRedirectUri: json['oidcRedirectUri'] as String? ?? def.oidcRedirectUri,
       oidcScopes: json['oidcScopes'] as String? ?? def.oidcScopes,
+      languageCode: json['languageCode'] as String? ?? '',
     );
   }
 }
