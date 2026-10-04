@@ -1,0 +1,11 @@
+shiftviewer
+Copyright 2026 shiftviewer contributors
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file for the full license text.
+
+This product includes third-party open-source packages distributed
+under their own licenses (MIT, BSD, and Apache 2.0); see `pubspec.lock`
+for the exact set and versions in use, and each package's own
+repository for its license text. None of them currently impose
+additional NOTICE obligations beyond their own license files.
