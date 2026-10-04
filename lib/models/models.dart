@@ -491,11 +491,16 @@ class WishSettings {
   final DateTime? windowEnd;
   final DateTime? updatedAt;
 
+  /// The recurring rule that opens and closes the window on its own, or null
+  /// when this deployment never reported one.
+  final WishSchedule? schedule;
+
   const WishSettings({
     required this.mode,
     this.windowStart,
     this.windowEnd,
     this.updatedAt,
+    this.schedule,
   });
 
   /// What the app assumes before the real settings arrive: wishing is offered
@@ -507,6 +512,9 @@ class WishSettings {
     windowStart: _parseDate(json['window_start']),
     windowEnd: _parseDate(json['window_end']),
     updatedAt: _parseDate(json['updated_at']),
+    schedule: json['schedule'] is Map<String, dynamic>
+        ? WishSchedule.fromJson(json['schedule'] as Map<String, dynamic>)
+        : null,
   );
 
   static DateTime? _parseDate(Object? raw) =>
@@ -538,3 +546,191 @@ class WishSettings {
       (mode != WishMode.dateRange ||
           (windowStart != null && windowEnd != null));
 }
+
+/// One public holiday of the configured state, per `GET /holidays`.
+///
+/// A holiday runs on its shifts' Sunday times and counts as a weekend day for
+/// the planner, so the calendar marks it: a day that looks like a normal
+/// Tuesday is planned like a Sunday.
+class Holiday {
+  final DateTime date;
+  final String name;
+
+  /// State code the holiday belongs to, e.g. `by`. Empty when not reported.
+  final String state;
+
+  const Holiday({required this.date, required this.name, this.state = ''});
+
+  factory Holiday.fromJson(Map<String, dynamic> json) => Holiday(
+    date: DateTime.parse(json['date'] as String),
+    name: json['name'] as String? ?? '',
+    state: json['state'] as String? ?? '',
+  );
+}
+
+/// The holidays stored for a range, with the state they belong to and whether
+/// the feature is switched on for this deployment at all.
+class HolidayCalendar {
+  final String state;
+  final bool enabled;
+  final List<Holiday> holidays;
+
+  const HolidayCalendar({
+    this.state = '',
+    this.enabled = false,
+    this.holidays = const [],
+  });
+
+  /// What the app assumes before the first read: no holidays, so nothing is
+  /// marked. The server stays the authority on how a day is planned.
+  static const HolidayCalendar none = HolidayCalendar();
+
+  factory HolidayCalendar.fromJson(Map<String, dynamic> json) =>
+      HolidayCalendar(
+        state: json['state'] as String? ?? '',
+        enabled: json['enabled'] as bool? ?? false,
+        holidays: (json['holidays'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(Holiday.fromJson)
+            .toList(),
+      );
+
+  /// Holidays keyed by midnight-of-day, for a per-cell lookup while painting
+  /// a calendar.
+  Map<DateTime, Holiday> get byDate => {
+    for (final h in holidays)
+      DateTime(h.date.year, h.date.month, h.date.day): h,
+  };
+}
+
+/// How often a [WishSchedule] recurs.
+enum ScheduleUnit {
+  days,
+  weeks,
+  months;
+
+  static ScheduleUnit parse(String? raw) => switch (raw) {
+    'weeks' => ScheduleUnit.weeks,
+    'months' => ScheduleUnit.months,
+    _ => ScheduleUnit.days,
+  };
+
+  String get wireValue => name;
+
+  /// The largest interval the server accepts for this unit.
+  int get maxInterval => switch (this) {
+    ScheduleUnit.days => 365,
+    ScheduleUnit.weeks => 52,
+    ScheduleUnit.months => 24,
+  };
+}
+
+/// A recurring rule that opens the wish window by itself: at each occurrence
+/// the server switches the window to `enabled`, and back to `disabled`
+/// [openDays] later. A manual change holds until the next switch.
+///
+/// Times are UTC — that is what the server stores and acts on.
+class WishSchedule {
+  final bool enabled;
+  final ScheduleUnit unit;
+
+  /// Every N units; at most [ScheduleUnit.maxInterval].
+  final int interval;
+
+  /// 0 = Monday. Only used when [unit] is [ScheduleUnit.weeks].
+  final int weekday;
+
+  /// Clamped to the month's last day. Only used when [unit] is
+  /// [ScheduleUnit.months].
+  final int dayOfMonth;
+
+  /// `HH:mm:ss`, UTC.
+  final String time;
+
+  /// How long the window stays open after each occurrence.
+  final int openDays;
+
+  /// First possible occurrence; anchors the interval. The server defaults it
+  /// to today on save.
+  final DateTime? startDate;
+
+  /// Next time (UTC) the schedule flips the window; null while it is off.
+  /// Server-reported, never sent back.
+  final DateTime? nextChangeAt;
+
+  /// Whether that next switch opens the window rather than closing it.
+  final bool? nextChangeOpens;
+
+  const WishSchedule({
+    this.enabled = false,
+    this.unit = ScheduleUnit.weeks,
+    this.interval = 1,
+    this.weekday = 0,
+    this.dayOfMonth = 1,
+    this.time = '08:00:00',
+    this.openDays = 7,
+    this.startDate,
+    this.nextChangeAt,
+    this.nextChangeOpens,
+  });
+
+  /// What an admin who has never set a schedule starts from: off, but with
+  /// sensible values already filled in so switching it on needs one tap.
+  static const WishSchedule off = WishSchedule();
+
+  factory WishSchedule.fromJson(Map<String, dynamic> json) => WishSchedule(
+    enabled: json['enabled'] as bool? ?? false,
+    unit: ScheduleUnit.parse(json['unit'] as String?),
+    interval: (json['interval'] as num?)?.toInt() ?? 1,
+    weekday: (json['weekday'] as num?)?.toInt() ?? 0,
+    dayOfMonth: (json['day_of_month'] as num?)?.toInt() ?? 1,
+    time: json['time'] as String? ?? '08:00:00',
+    openDays: (json['open_days'] as num?)?.toInt() ?? 7,
+    startDate: _parseDateOrNull(json['start_date']),
+    nextChangeAt: _parseDateOrNull(json['next_change_at']),
+    nextChangeOpens: json['next_change_opens'] as bool?,
+  );
+
+  /// What `PUT /wish-settings` takes. The server-reported `next_change_*`
+  /// fields are left out — they are derived, not settable.
+  Map<String, dynamic> toRequest() => {
+    'enabled': enabled,
+    'unit': unit.wireValue,
+    'interval': interval,
+    'weekday': weekday,
+    'day_of_month': dayOfMonth,
+    'time': time,
+    'open_days': openDays,
+    if (startDate != null)
+      'start_date':
+          '${startDate!.year.toString().padLeft(4, '0')}-'
+          '${startDate!.month.toString().padLeft(2, '0')}-'
+          '${startDate!.day.toString().padLeft(2, '0')}',
+  };
+
+  WishSchedule copyWith({
+    bool? enabled,
+    ScheduleUnit? unit,
+    int? interval,
+    int? weekday,
+    int? dayOfMonth,
+    String? time,
+    int? openDays,
+    DateTime? startDate,
+  }) => WishSchedule(
+    enabled: enabled ?? this.enabled,
+    unit: unit ?? this.unit,
+    // An interval carried over from another unit may exceed the new maximum.
+    interval: (interval ?? this.interval).clamp(1, (unit ?? this.unit).maxInterval),
+    weekday: weekday ?? this.weekday,
+    dayOfMonth: dayOfMonth ?? this.dayOfMonth,
+    time: time ?? this.time,
+    openDays: openDays ?? this.openDays,
+    startDate: startDate ?? this.startDate,
+    nextChangeAt: nextChangeAt,
+    nextChangeOpens: nextChangeOpens,
+  );
+}
+
+DateTime? _parseDateOrNull(Object? raw) =>
+    raw is String && raw.isNotEmpty ? DateTime.tryParse(raw) : null;

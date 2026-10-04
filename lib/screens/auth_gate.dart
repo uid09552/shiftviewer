@@ -34,8 +34,12 @@ class _AuthGateState extends State<AuthGate> {
       WidgetsBinding.instance.addPostFrameCallback((_) => auth.initialize());
     }
 
-    // Keep the data layer's token in sync with the session.
-    context.read<ShiftDataController>().updateAccessToken(auth.accessToken);
+    // Hand the data layer the session itself rather than a token snapshot: it
+    // asks for a token per request, so one that expires mid-session is renewed
+    // instead of being sent stale.
+    context.read<ShiftDataController>().updateTokenProvider(
+          auth.validAccessToken,
+        );
 
     switch (auth.status) {
       case AuthStatus.initializing:

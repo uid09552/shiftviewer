@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/l10n_helpers.dart';
+import '../models/admin_models.dart';
 import '../services/api_client.dart';
 import '../services/app_settings.dart';
 
@@ -27,6 +29,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _testing = false;
   String? _testResult;
   bool _testOk = false;
+  BackendInfo? _backendInfo;
 
   /// Empty means "follow the device locale".
   late String _languageCode;
@@ -80,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _testing = true;
       _testResult = null;
+      _backendInfo = null;
     });
     final l10n = context.l10n;
     final client = ShiftApiClient(_currentDraft());
@@ -89,6 +93,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _testOk = true;
         _testResult = l10n.connectionSuccessful;
       });
+      // A diagnostic extra: which backend answered. Never lets a failure here
+      // turn a successful connection test into a failed one.
+      try {
+        final info = await client.info();
+        if (mounted) setState(() => _backendInfo = info);
+      } catch (_) {
+        // Older deployments may not have this endpoint yet.
+      }
     } on ApiException catch (e) {
       final code = e.statusCode;
       setState(() {
@@ -279,9 +291,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+            if (_backendInfo != null) _backendInfoPanel(context, _backendInfo!),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _backendInfoPanel(BuildContext context, BackendInfo info) {
+    final l10n = context.l10n;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final lines = [
+      if (info.version.isNotEmpty) l10n.admBackendVersion(info.version),
+      if (info.commit.isNotEmpty) l10n.admBackendCommit(info.shortCommit),
+      if (info.buildDate != null)
+        l10n.admBackendBuildDate(
+            DateFormat.yMMMd(context.dateLocale).format(info.buildDate!.toLocal())),
+    ];
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, left: 26),
+      child: Text(lines.join(' · '),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: muted)),
     );
   }
 

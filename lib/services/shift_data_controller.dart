@@ -82,7 +82,11 @@ class WishBatchResult {
 /// detail shows every employee working that day.
 class ShiftDataController extends ChangeNotifier {
   AppSettings _settings;
-  String? _accessToken;
+
+  /// Asked for the access token before every request rather than handed one
+  /// up front, so a session that outlives its access token keeps working: the
+  /// auth layer renews it in place and the call carries the new one.
+  AccessTokenProvider? _tokenProvider;
 
   /// Supplies the transport for every request, so tests can stand in for the
   /// network. Null means a real client per call, as in production.
@@ -102,6 +106,7 @@ class ShiftDataController extends ChangeNotifier {
   Map<DateTime, List<ConfirmedShiftPlan>> _plansByDate = {};
   Map<DateTime, List<ShiftWish>> _wishesByDate = {};
   WishSettings _wishSettings = WishSettings.open;
+  HolidayCalendar _holidays = HolidayCalendar.none;
   String? _selectedEmployeeId;
 
   /// The range the loaded plans and wishes cover, so the insight sheets can
@@ -141,6 +146,15 @@ class ShiftDataController extends ChangeNotifier {
   /// Whether a wish may be placed or withdrawn for [day].
   bool canWishOn(DateTime day) => _wishSettings.allows(day);
 
+  /// Public holidays covering the loaded range, as last read from
+  /// `/holidays`. Empty and disabled until the first successful read or on a
+  /// deployment that has the feature switched off.
+  HolidayCalendar get holidays => _holidays;
+
+  /// The holiday on [day], or null on an ordinary day. A holiday runs on its
+  /// shifts' Sunday times and counts as a weekend day for the planner.
+  Holiday? holidayOn(DateTime day) => _holidays.byDate[dateKey(day)];
+
   String? get selectedEmployeeId => _selectedEmployeeId;
   Employee? get selectedEmployee => _employeesById[_selectedEmployeeId];
 
@@ -154,7 +168,8 @@ class ShiftDataController extends ChangeNotifier {
       id == null ? null : _workstationsById[id];
 
   void updateSettings(AppSettings settings) => _settings = settings;
-  void updateAccessToken(String? token) => _accessToken = token;
+  void updateTokenProvider(AccessTokenProvider? provider) =>
+      _tokenProvider = provider;
 
   /// Selects the employee whose shifts the calendar highlights (null = all).
   void selectEmployee(String? employeeId) {
@@ -376,6 +391,7 @@ class ShiftDataController extends ChangeNotifier {
         client.confirmedShiftPlans(from, to),
         client.listShiftWishes(from, to),
         _loadWishSettings(client),
+        _loadHolidays(client, from, to),
       ]);
       final shifts = results[0] as List<Shift>;
       final employees = results[1] as List<Employee>;
@@ -383,6 +399,7 @@ class ShiftDataController extends ChangeNotifier {
       final plans = results[3] as List<ConfirmedShiftPlan>;
       final wishes = results[4] as List<ShiftWish>;
       _wishSettings = results[5] as WishSettings;
+      _holidays = results[6] as HolidayCalendar;
 
       _shiftsById = {for (final s in shifts) s.id: s};
       _employees = employees..sort((a, b) => a.name.compareTo(b.name));
@@ -427,6 +444,22 @@ class ShiftDataController extends ChangeNotifier {
     } catch (e) {
       debugPrint('[data] wish settings unavailable: $e');
       return _wishSettings;
+    }
+  }
+
+  /// Reads the holidays for `[from, to]`, falling back to the last known set
+  /// when the endpoint is unavailable or the deployment has it switched off:
+  /// the calendar must still load either way.
+  Future<HolidayCalendar> _loadHolidays(
+    ShiftApiClient client,
+    DateTime from,
+    DateTime to,
+  ) async {
+    try {
+      return await client.holidays(from, to);
+    } catch (e) {
+      debugPrint('[data] holidays unavailable: $e');
+      return _holidays;
     }
   }
 
@@ -515,9 +548,13 @@ class ShiftDataController extends ChangeNotifier {
     }
   }
 
+  /// A client carrying the current settings and session, for screens that
+  /// talk to endpoints this controller does not cover. The caller closes it.
+  ShiftApiClient createClient() => _client();
+
   ShiftApiClient _client() => ShiftApiClient(
     _settings,
-    accessToken: _accessToken,
+    tokenProvider: _tokenProvider,
     client: _httpClientFactory?.call(),
   );
 }

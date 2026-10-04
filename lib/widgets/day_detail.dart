@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/calendar_handoff.dart';
 import '../services/shift_data_controller.dart';
 import 'calendar_export_sheet.dart';
+import 'detail_list_sheet.dart';
 import 'shift_insights_sheet.dart';
 import 'shift_wish_sheet.dart';
 import 'wish_window_status.dart';
@@ -33,35 +34,65 @@ class DayDetailSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final plans = data.allPlansForDay(day);
+    final holiday = data.holidayOn(day);
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (data.selectedEmployeeId != null) _myShiftHero(context),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.event_note,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    DateFormat.yMMMMEEEEd(context.dateLocale).format(day),
-                    style: theme.textTheme.titleMedium,
+          LongPressTarget(
+            onLongPress: () => showDetailListSheet(
+              context,
+              title: context.l10n.detailsEveryoneWorking,
+              subtitle: DateFormat.yMMMMEEEEd(context.dateLocale).format(day),
+              icon: Icons.groups_outlined,
+              entries: peopleEntries(
+                context,
+                data: data,
+                day: day,
+                plans: plans,
+                showShift: true,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: [
+                  Icon(
+                    holiday != null ? Icons.celebration_outlined : Icons.event_note,
+                    size: 18,
+                    color: holiday != null
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.primary,
                   ),
-                ),
-                Text(
-                  context.l10n.workingCount(plans.length),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.outline,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          DateFormat.yMMMMEEEEd(context.dateLocale).format(day),
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        if (holiday != null)
+                          Text(
+                            holiday.name,
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: theme.colorScheme.error,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  Text(
+                    context.l10n.workingCount(plans.length),
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (data.selectedEmployeeId != null) _wishRow(context),
@@ -91,23 +122,34 @@ class DayDetailSummary extends StatelessWidget {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Tooltip(
-            message: editable ? '' : l10n.wishOutsideWindow,
-            child: ActionChip(
-              visualDensity: VisualDensity.compact,
-              avatar: Icon(
-                wish == null ? Icons.star_border_rounded : Icons.star_rounded,
-                size: 18,
-                color: editable ? color : theme.colorScheme.outline,
+          LongPressTarget(
+            onLongPress: () => showDetailListSheet(
+              context,
+              title: l10n.sectionWishes,
+              subtitle: DateFormat.yMMMMEEEEd(context.dateLocale).format(day),
+              icon: Icons.star_border_rounded,
+              accent: color,
+              entries: _wishEntries(context),
+            ),
+            borderRadius: BorderRadius.circular(20),
+            child: Tooltip(
+              message: editable ? '' : l10n.wishOutsideWindow,
+              child: ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: Icon(
+                  wish == null ? Icons.star_border_rounded : Icons.star_rounded,
+                  size: 18,
+                  color: editable ? color : theme.colorScheme.outline,
+                ),
+                label: Text(
+                  wish == null
+                      ? l10n.addShiftWish
+                      : l10n.wishFor(shift?.name ?? l10n.unknownShift),
+                ),
+                onPressed: editable
+                    ? () => showShiftWishSheet(context, days: [day], data: data)
+                    : null,
               ),
-              label: Text(
-                wish == null
-                    ? l10n.addShiftWish
-                    : l10n.wishFor(shift?.name ?? l10n.unknownShift),
-              ),
-              onPressed: editable
-                  ? () => showShiftWishSheet(context, days: [day], data: data)
-                  : null,
             ),
           ),
           if (data.wishSettings.mode != WishMode.enabled)
@@ -115,6 +157,42 @@ class DayDetailSummary extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Everyone who wished for a shift on this day, whoever they are — the chip
+  /// above only shows the signed-in employee's own wish.
+  List<DetailEntry> _wishEntries(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final wishes = data.wishesForDay(day);
+    final rostered = {
+      for (final p in data.allPlansForDay(day))
+        if (p.isPresent) '${p.employeeId}|${p.shiftId}',
+    };
+
+    return [
+      for (final wish in wishes)
+        () {
+          final granted = rostered.contains(
+            '${wish.employeeId}|${wish.shiftId}',
+          );
+          final shift = data.shiftById(wish.shiftId);
+          return DetailEntry(
+            title: data.employeeById(wish.employeeId)?.name ?? wish.employeeId,
+            subtitle:
+                '${shift?.name ?? l10n.unknownShift} · '
+                '${granted ? l10n.wishGranted : l10n.wishNotGranted}',
+            icon: granted ? Icons.star_rounded : Icons.star_border_rounded,
+            color: shift?.displayColor ?? theme.colorScheme.outline,
+            onTap: () => showEmployeeInsightsSheet(
+              context,
+              data: data,
+              day: day,
+              employeeId: wish.employeeId,
+            ),
+          );
+        }(),
+    ];
   }
 
   /// Large, at-a-glance banner with the selected employee's own shift and
@@ -131,6 +209,19 @@ class DayDetailSummary extends StatelessWidget {
       return _heroShell(
         context,
         color: theme.colorScheme.outline,
+        onLongPress: () => showDetailListSheet(
+          context,
+          title: context.l10n.detailsEveryoneWorking,
+          subtitle: DateFormat.yMMMMEEEEd(context.dateLocale).format(day),
+          icon: Icons.groups_outlined,
+          entries: peopleEntries(
+            context,
+            data: data,
+            day: day,
+            plans: data.allPlansForDay(day),
+            showShift: true,
+          ),
+        ),
         child: Row(
           children: [
             Icon(
@@ -174,6 +265,22 @@ class DayDetailSummary extends StatelessWidget {
         data: data,
         day: day,
         shiftId: plan.shiftId,
+      ),
+      onLongPress: () => showDetailListSheet(
+        context,
+        title: shift?.name ?? context.l10n.offNotScheduled,
+        subtitle: context.l10n.detailsOnThisShift,
+        icon: Icons.groups_outlined,
+        accent: color,
+        entries: peopleEntries(
+          context,
+          data: data,
+          day: day,
+          plans: data
+              .allPlansForDay(day)
+              .where((p) => p.shiftId == plan.shiftId)
+              .toList(),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -270,6 +377,7 @@ class DayDetailSummary extends StatelessWidget {
     required Color color,
     required Widget child,
     VoidCallback? onTap,
+    VoidCallback? onLongPress,
   }) {
     final theme = Theme.of(context);
     return Container(
@@ -281,6 +389,7 @@ class DayDetailSummary extends StatelessWidget {
       ),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(14),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -397,12 +506,28 @@ class DayShiftList extends StatelessWidget {
           // Shift header — and the way into the shift's own statistics.
           Tooltip(
             message: context.l10n.showShiftDetails,
+            // The header's own long press lists the shift, so the tooltip
+            // stays a hover hint.
+            triggerMode: TooltipTriggerMode.manual,
             child: InkWell(
               onTap: () => showShiftInsightsSheet(
                 context,
                 data: data,
                 day: day,
                 shiftId: shiftId,
+              ),
+              onLongPress: () => showDetailListSheet(
+                context,
+                title: shift?.name ?? context.l10n.offNotScheduled,
+                subtitle: context.l10n.detailsOnThisShift,
+                icon: Icons.groups_outlined,
+                accent: color,
+                entries: peopleEntries(
+                  context,
+                  data: data,
+                  day: day,
+                  plans: plans,
+                ),
               ),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(12),
@@ -484,28 +609,62 @@ class DayShiftList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (showWs)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.desktop_windows_outlined,
-                  size: 14,
-                  color: theme.colorScheme.outline,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  ws?.name ?? context.l10n.unassignedWorkstation,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+          LongPressTarget(
+            onLongPress: () =>
+                _showWorkstation(context, ws, workstationId, plans),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.desktop_windows_outlined,
+                    size: 14,
                     color: theme.colorScheme.outline,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    ws?.name ?? context.l10n.unassignedWorkstation,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         for (final p in plans..sort(_byEmployeeName)) _employeeRow(context, p),
       ],
+    );
+  }
+
+  /// The people at one workstation inside one shift, under whatever the
+  /// station itself asks for.
+  void _showWorkstation(
+    BuildContext context,
+    Workstation? ws,
+    String? workstationId,
+    List<ConfirmedShiftPlan> plans,
+  ) {
+    final l10n = context.l10n;
+    final present = plans.where((p) => p.isPresent).length;
+    final notes = <String>[
+      l10n.detailsAtWorkstation,
+      if (ws != null && !ws.available) l10n.stationUnavailable,
+      if (ws != null && present < ws.minEmployees)
+        l10n.stationBelowMinimum(ws.minEmployees),
+      if (ws?.maxEmployees != null && present > ws!.maxEmployees!)
+        l10n.stationAboveMaximum(ws.maxEmployees!),
+      if (ws != null && ws.priority != 'medium')
+        priorityLabel(l10n, ws.priority),
+    ];
+
+    showDetailListSheet(
+      context,
+      title: ws?.name ?? l10n.unassignedWorkstation,
+      subtitle: notes.join(' · '),
+      icon: Icons.desktop_windows_outlined,
+      entries: peopleEntries(context, data: data, day: day, plans: plans),
     );
   }
 
@@ -528,6 +687,7 @@ class DayShiftList extends StatelessWidget {
         day: day,
         employeeId: plan.employeeId,
       ),
+      onLongPress: () => _showEmployeeDay(context, plan, name),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 5, 14, 5),
         child: Row(
@@ -563,6 +723,90 @@ class DayShiftList extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// One person's day, spelled out: their shift and its times, the workstation,
+  /// the absence when there is one, and who else is standing next to them.
+  void _showEmployeeDay(
+    BuildContext context,
+    ConfirmedShiftPlan plan,
+    String name,
+  ) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final shift = data.shiftById(plan.shiftId);
+    final times = shift?.timesFor(day);
+    final ws = data.workstationById(plan.workstationId);
+    final color = shift?.displayColor ?? theme.colorScheme.outline;
+
+    final beside = data
+        .allPlansForDay(day)
+        .where(
+          (p) =>
+              p.employeeId != plan.employeeId &&
+              p.shiftId == plan.shiftId &&
+              p.workstationId == plan.workstationId,
+        )
+        .toList();
+
+    showDetailListSheet(
+      context,
+      title: name,
+      subtitle: DateFormat.yMMMMEEEEd(context.dateLocale).format(day),
+      icon: Icons.badge_outlined,
+      accent: color,
+      entries: [
+        DetailEntry(
+          title: shift?.name ?? l10n.offNotScheduled,
+          subtitle: times == null
+              ? l10n.notScheduledOnWeekday
+              : '${times.startTime} – ${times.endTime}',
+          trailing: times == null ? null : hoursLabel(context, times.hours),
+          icon: Icons.schedule,
+          color: color,
+          onTap: () => showShiftInsightsSheet(
+            context,
+            data: data,
+            day: day,
+            shiftId: plan.shiftId,
+          ),
+        ),
+        DetailEntry(
+          title: ws?.name ?? l10n.unassignedWorkstation,
+          subtitle: ws == null
+              ? null
+              : [
+                  l10n.stationBelowMinimum(ws.minEmployees),
+                  if (!ws.available) l10n.stationUnavailable,
+                  if (ws.priority != 'medium') priorityLabel(l10n, ws.priority),
+                ].join(' · '),
+          icon: Icons.desktop_windows_outlined,
+          color: theme.colorScheme.primary,
+        ),
+        DetailEntry(
+          title: plan.isPresent
+              ? l10n.statPresent
+              : absenceLabel(l10n, plan.absenceType),
+          icon: plan.isPresent ? Icons.person : Icons.person_off_outlined,
+          color: plan.isPresent
+              ? theme.colorScheme.primary
+              : theme.colorScheme.error,
+          onTap: () => showEmployeeInsightsSheet(
+            context,
+            data: data,
+            day: day,
+            employeeId: plan.employeeId,
+          ),
+        ),
+        ...peopleEntries(
+          context,
+          data: data,
+          day: day,
+          plans: beside,
+          showWorkstation: false,
+        ),
+      ],
     );
   }
 }

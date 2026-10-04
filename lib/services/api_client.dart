@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
+import '../models/admin_models.dart';
 import '../models/models.dart';
 import 'app_settings.dart';
 import 'http_client_factory.dart';
@@ -17,6 +18,12 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+/// Supplies a currently-valid OIDC access token, renewing it from the refresh
+/// token when the current one has run out. `forceRefresh` asks for a renewal
+/// even when the cached token still looks valid, which is what the client does
+/// after a 401. Returns null when the session cannot be continued.
+typedef AccessTokenProvider = Future<String?> Function({bool forceRefresh});
+
 /// Thin REST client for the Hospital Shift Management API.
 ///
 /// Builds requests from the current [AppSettings] (base URL + auth). Auth uses
@@ -26,13 +33,22 @@ class ShiftApiClient {
   final AppSettings settings;
 
   /// OIDC access token from the login flow; takes precedence over the manual
-  /// bearer token / basic auth in settings when present.
+  /// bearer token / basic auth in settings when present. Only used when no
+  /// [tokenProvider] is given.
   final String? accessToken;
+
+  /// Asked for the access token before every request, so a token that expired
+  /// while the app was open is renewed instead of being sent stale.
+  final AccessTokenProvider? tokenProvider;
 
   final http.Client _http;
 
-  ShiftApiClient(this.settings, {this.accessToken, http.Client? client})
-    : _http = client ?? createHttpClient();
+  ShiftApiClient(
+    this.settings, {
+    this.accessToken,
+    this.tokenProvider,
+    http.Client? client,
+  }) : _http = client ?? createHttpClient();
 
   static final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
 
@@ -43,9 +59,15 @@ class ShiftApiClient {
     ).replace(queryParameters: (query == null || query.isEmpty) ? null : query);
   }
 
-  Map<String, String> get _headers {
+  Future<String?> _resolveToken({required bool forceRefresh}) async {
+    final provider = tokenProvider;
+    if (provider == null) return accessToken;
+    return provider(forceRefresh: forceRefresh);
+  }
+
+  Future<Map<String, String>> _buildHeaders({bool forceRefresh = false}) async {
     final headers = <String, String>{'Accept': 'application/json'};
-    final oidc = accessToken?.trim() ?? '';
+    final oidc = (await _resolveToken(forceRefresh: forceRefresh))?.trim() ?? '';
     if (oidc.isNotEmpty) {
       headers['Authorization'] = 'Bearer $oidc';
       // The backend authenticates off this header (see docs/auth.md); the
@@ -63,17 +85,39 @@ class ShiftApiClient {
     return headers;
   }
 
+  /// Runs [attempt] with fresh auth headers, and once more with a renewed
+  /// access token when the server answers 401.
+  ///
+  /// An expired access token is an ordinary event in a long-lived session, not
+  /// a reason to send the user back to sign in: the second attempt carries the
+  /// token the refresh produced. When the renewal yields nothing new — no
+  /// refresh token, or the server refused it — the 401 stands and the auth
+  /// layer has already ended the session.
+  Future<http.Response> _withAuthRetry(
+    Future<http.Response> Function(Map<String, String> headers) attempt,
+  ) async {
+    final headers = await _buildHeaders();
+    final res = await attempt(headers);
+    if (res.statusCode != 401 || tokenProvider == null) return res;
+
+    debugPrint('[api] 401 -> renewing the access token and retrying once');
+    final renewed = await _buildHeaders(forceRefresh: true);
+    if (renewed['Authorization'] == headers['Authorization']) return res;
+    return attempt(renewed);
+  }
+
   Future<dynamic> _get(String path, [Map<String, String>? query]) async {
     final http.Response res;
-    final headers = _headers;
-    final auth = headers['Authorization'];
-    debugPrint(
-      '[api] GET $path  Authorization=${auth == null ? "MISSING" : "${auth.split(' ').first} len=${auth.length}"}',
-    );
     try {
-      res = await _http
-          .get(_uri(path, query), headers: headers)
-          .timeout(const Duration(seconds: 15));
+      res = await _withAuthRetry((headers) {
+        final auth = headers['Authorization'];
+        debugPrint(
+          '[api] GET $path  Authorization=${auth == null ? "MISSING" : "${auth.split(' ').first} len=${auth.length}"}',
+        );
+        return _http
+            .get(_uri(path, query), headers: headers)
+            .timeout(const Duration(seconds: 15));
+      });
     } catch (e) {
       throw ApiException('Network error: $e');
     }
@@ -97,18 +141,23 @@ class ShiftApiClient {
     String method,
     String path, [
     Map<String, dynamic>? body,
+    Map<String, String>? query,
   ]) async {
-    final request = http.Request(method, _uri(path))..headers.addAll(_headers);
-    if (body != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
-    }
     final http.Response res;
     try {
-      final streamed = await _http
-          .send(request)
-          .timeout(const Duration(seconds: 15));
-      res = await http.Response.fromStream(streamed);
+      // A sent request cannot be re-sent, so each attempt builds its own.
+      res = await _withAuthRetry((headers) async {
+        final request = http.Request(method, _uri(path, query))
+          ..headers.addAll(headers);
+        if (body != null) {
+          request.headers['Content-Type'] = 'application/json';
+          request.body = jsonEncode(body);
+        }
+        final streamed = await _http
+            .send(request)
+            .timeout(const Duration(seconds: 15));
+        return http.Response.fromStream(streamed);
+      });
     } catch (e) {
       throw ApiException('Network error: $e');
     }
@@ -118,12 +167,79 @@ class ShiftApiClient {
         'body=${res.body.length > 300 ? res.body.substring(0, 300) : res.body}',
       );
       throw ApiException(
-        res.reasonPhrase ?? 'Request failed',
+        _errorText(res) ?? res.reasonPhrase ?? 'Request failed',
         statusCode: res.statusCode,
       );
     }
     if (res.body.isEmpty) return null;
     return jsonDecode(res.body);
+  }
+
+  /// GET [path] under the API base and decode the JSON body. For the
+  /// management screens, whose endpoints live in `admin_api.dart`.
+  Future<dynamic> getJson(String path, [Map<String, String>? query]) =>
+      _get(path, query);
+
+  /// POST/PUT/PATCH/DELETE [path] with an optional JSON body and query.
+  Future<dynamic> sendJson(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+    Map<String, String>? query,
+  ]) => _send(method, path, body, query);
+
+  /// The assistant (agent) service, which the gateway serves at `/agent`
+  /// beside the API's `/api/v1`. Null when the base URL does not end in
+  /// `/api/v1`, since the agent's address cannot be derived then.
+  Uri? agentUri(String path) {
+    final base = settings.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    if (!base.endsWith('/api/v1')) return null;
+    final root = base.substring(0, base.length - '/api/v1'.length);
+    return Uri.parse('$root/agent$path');
+  }
+
+  /// POST a JSON body to the assistant service; see [agentUri]. Plan checks
+  /// take a while, so the timeout is generous.
+  Future<dynamic> postAgent(String path, Map<String, dynamic> body) async {
+    final uri = agentUri(path);
+    if (uri == null) {
+      throw ApiException('Assistant address unknown for this API base URL');
+    }
+    final http.Response res;
+    try {
+      res = await _withAuthRetry((headers) async {
+        return _http
+            .post(
+              uri,
+              headers: {...headers, 'Content-Type': 'application/json'},
+              body: jsonEncode(body),
+            )
+            .timeout(const Duration(minutes: 5));
+      });
+    } catch (e) {
+      throw ApiException('Network error: $e');
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(
+        _errorText(res) ?? res.reasonPhrase ?? 'Request failed',
+        statusCode: res.statusCode,
+      );
+    }
+    if (res.body.isEmpty) return null;
+    return jsonDecode(res.body);
+  }
+
+  /// The `error`/`message` the backend puts in a failed response's JSON body,
+  /// which says far more than the status line ("Workstation is closed on …").
+  static String? _errorText(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      if (body is Map) {
+        final text = body['error'] ?? body['message'] ?? body['detail'];
+        if (text is String && text.trim().isNotEmpty) return text.trim();
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Lightweight connectivity/auth check used by the settings screen.
@@ -200,6 +316,30 @@ class ShiftApiClient {
   Future<WishSettings> getWishSettings() async {
     final data = await _get('/wish-settings');
     return WishSettings.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Public holidays of the configured state in `[from, to]`.
+  ///
+  /// Years the backend has not stored yet are fetched from its holiday API on
+  /// the way, so the first call for a new year can be slow. A deployment with
+  /// holidays switched off answers with `enabled: false` and no days.
+  Future<HolidayCalendar> holidays(DateTime from, DateTime to) async {
+    final data = await _get('/holidays', {
+      'from': _dateFmt.format(from),
+      'to': _dateFmt.format(to),
+    });
+    return data is Map<String, dynamic>
+        ? HolidayCalendar.fromJson(data)
+        : HolidayCalendar.none;
+  }
+
+  /// Version, commit and build date of the backend being talked to. Useful
+  /// when a bug report has to name which deployment produced it.
+  Future<BackendInfo> info() async {
+    final data = await _get('/info');
+    return data is Map<String, dynamic>
+        ? BackendInfo.fromJson(data)
+        : const BackendInfo();
   }
 
   /// Shift wishes in `[from, to]`, optionally for a single employee.

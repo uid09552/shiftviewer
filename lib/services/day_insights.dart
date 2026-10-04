@@ -463,3 +463,75 @@ List<MapEntry<String, int>> _ranked(Map<String, int> counts) =>
       final byCount = b.value.compareTo(a.value);
       return byCount != 0 ? byCount : a.key.compareTo(b.key);
     });
+
+/// Every plan the loaded range holds for [employeeId], oldest day first.
+///
+/// The insight sheets show counts built the same way; this returns the rows
+/// behind those counts so a long press can list them.
+List<ConfirmedShiftPlan> employeePlansInRange(
+  ShiftDataController data,
+  String employeeId, {
+  bool Function(ConfirmedShiftPlan plan)? where,
+}) {
+  final from = data.loadedFrom;
+  final to = data.loadedTo;
+  if (from == null || to == null) return const [];
+
+  final out = <ConfirmedShiftPlan>[];
+  for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1))) {
+    for (final p in data.allPlansForDay(d)) {
+      if (p.employeeId != employeeId) continue;
+      if (where != null && !where(p)) continue;
+      out.add(p);
+    }
+  }
+  return out;
+}
+
+/// One wish of [employeeId]'s in the loaded range, and whether the roster
+/// ended up putting them on the shift they asked for.
+class WishOutcome {
+  final ShiftWish wish;
+  final bool granted;
+
+  const WishOutcome({required this.wish, required this.granted});
+}
+
+/// Every wish [employeeId] placed inside the loaded range, oldest day first,
+/// each with the outcome the employee sheet's hit rate is built from.
+List<WishOutcome> employeeWishesInRange(
+  ShiftDataController data,
+  String employeeId,
+) {
+  final from = data.loadedFrom;
+  final to = data.loadedTo;
+  if (from == null || to == null) return const [];
+
+  final out = <WishOutcome>[];
+  for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1))) {
+    for (final w in data.wishesForDay(d)) {
+      if (w.employeeId != employeeId) continue;
+      out.add(
+        WishOutcome(
+          wish: w,
+          granted: data
+              .allPlansForDay(d)
+              .any(
+                (p) =>
+                    p.employeeId == employeeId &&
+                    p.shiftId == w.shiftId &&
+                    p.isPresent,
+              ),
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+/// Hours the roster books for [plan] on its own day; 0 for an absence or a
+/// shift that does not run that weekday.
+double plannedHoursFor(ShiftDataController data, ConfirmedShiftPlan plan) {
+  if (!plan.isPresent) return 0;
+  return data.shiftById(plan.shiftId)?.timesFor(plan.date)?.hours ?? 0;
+}

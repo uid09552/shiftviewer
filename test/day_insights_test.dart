@@ -242,6 +242,11 @@ Widget _dayHost(ShiftDataController data, {String locale = 'en'}) =>
       ),
     );
 
+/// A row of a long-press listing. The day list stays on screen behind the
+/// sheet, so names have to be looked for where only the listing puts them.
+Finder _listRow(String text) =>
+    find.descendant(of: find.byType(ListTile), matching: find.text(text));
+
 /// `MapEntry` has no value equality, so ranked counts are compared as strings.
 List<String> _pairs(List<MapEntry<String, int>> entries) => [
   for (final e in entries) '${e.key}=${e.value}',
@@ -530,6 +535,125 @@ void main() {
       expect(find.text('Vollständig besetzt'), findsOneWidget);
       expect(find.text('ARBEITSPLÄTZE'), findsOneWidget);
       expect(find.text('Krank · 1'), findsOneWidget);
+    });
+
+    testWidgets('long pressing a shift header lists who is on it', (
+      tester,
+    ) async {
+      final data = await _loaded();
+      await tester.pumpWidget(_dayHost(data));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Early'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('People on this shift'), findsOneWidget);
+      // Everyone rostered for it, present or not, and nobody from the night.
+      expect(_listRow('Ada Lovelace'), findsOneWidget);
+      expect(_listRow('Bo Peep'), findsOneWidget);
+      expect(_listRow('Cy Young'), findsOneWidget);
+      expect(_listRow('Dee Dee'), findsNothing);
+      // The absence is spelled out on the row it belongs to.
+      expect(find.textContaining('Ward · Sick'), findsOneWidget);
+    });
+
+    testWidgets('long pressing a workstation row lists the people there', (
+      tester,
+    ) async {
+      final data = await _loaded();
+      await tester.pumpWidget(_dayHost(data));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Triage'));
+      await tester.pumpAndSettle();
+
+      expect(_listRow('Ada Lovelace'), findsOneWidget);
+      expect(_listRow('Bo Peep'), findsOneWidget);
+      expect(_listRow('Cy Young'), findsNothing);
+      // Triage wants three people and has two, which the subtitle says.
+      expect(find.textContaining('Below its minimum of 3'), findsOneWidget);
+    });
+
+    testWidgets('a person in the list long presses into their own day', (
+      tester,
+    ) async {
+      final data = await _loaded();
+      await tester.pumpWidget(_dayHost(data));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Ada Lovelace'));
+      await tester.pumpAndSettle();
+
+      // Her shift with its hours, her workstation, and who stands beside her.
+      expect(find.text('06:00 – 14:00'), findsOneWidget);
+      expect(find.text('8 h'), findsOneWidget);
+      expect(_listRow('Triage'), findsOneWidget);
+      expect(_listRow('Bo Peep'), findsOneWidget);
+    });
+
+    testWidgets('a stat tile lists the people it counted', (tester) async {
+      final data = await _loaded();
+      await tester.pumpWidget(_dayHost(data));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Early'));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Absent'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Absent'), findsWidgets);
+      expect(_listRow('Cy Young'), findsOneWidget);
+      expect(_listRow('Ada Lovelace'), findsNothing);
+    });
+
+    testWidgets('the times pill lists the shift week', (tester) async {
+      final data = await _loaded();
+      await tester.pumpWidget(_dayHost(data));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Early'));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('06:00 – 14:00'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Weekly schedule'), findsOneWidget);
+      expect(find.text('Monday'), findsOneWidget);
+      // Early runs Monday to Friday only.
+      expect(find.text('Saturday'), findsOneWidget);
+      expect(find.text('Does not run'), findsNWidgets(2));
+    });
+
+    testWidgets('an employee total lists the days behind it', (tester) async {
+      final data = await _loaded();
+      await tester.pumpWidget(_dayHost(data));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Ada Lovelace'));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Days worked'));
+      await tester.pumpAndSettle();
+
+      // Ada works the early shift on both the Monday and the Tuesday.
+      expect(find.textContaining('Jun 1, 2026'), findsOneWidget);
+      expect(find.textContaining('Jun 2, 2026'), findsOneWidget);
+    });
+
+    testWidgets('a listing leads on into the person it names', (tester) async {
+      final data = await _loaded();
+      await tester.pumpWidget(_dayHost(data));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Early'));
+      await tester.pumpAndSettle();
+      await tester.tap(_listRow('Bo Peep'));
+      await tester.pumpAndSettle();
+
+      // The listing is replaced by Bo's own sheet rather than stacking on it.
+      expect(find.text('bo@example.test'), findsOneWidget);
+      expect(find.text('People on this shift'), findsNothing);
     });
 
     testWidgets('the sheet still opens when analysis is refused', (

@@ -57,8 +57,9 @@ class WeekView extends StatelessWidget {
     final plans = data.plansForDay(day);
     final wish = data.wishForDay(day);
     final wishShift = wish == null ? null : data.shiftById(wish.shiftId);
+    final holiday = data.holidayOn(day);
 
-    return Padding(
+    final cell = Padding(
       padding: const EdgeInsets.all(3),
       child: PaintableDay(
         day: dateKey(day),
@@ -66,7 +67,9 @@ class WeekView extends StatelessWidget {
         child: Material(
           color: isSelected
               ? theme.colorScheme.primaryContainer
-              : theme.colorScheme.surfaceContainerHighest,
+              : holiday != null
+                  ? theme.colorScheme.errorContainer.withValues(alpha: 0.35)
+                  : theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(10),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
@@ -86,6 +89,7 @@ class WeekView extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text('${day.day}',
                       style: theme.textTheme.titleMedium?.copyWith(
+                        color: holiday != null ? theme.colorScheme.error : null,
                         fontWeight:
                             isToday ? FontWeight.bold : FontWeight.normal,
                       )),
@@ -111,6 +115,9 @@ class WeekView extends StatelessWidget {
         ),
       ),
     );
+    return holiday == null
+        ? cell
+        : Tooltip(message: holiday.name, child: cell);
   }
 
   /// The wished shift, drawn as an outlined chip so it never reads as rostered.

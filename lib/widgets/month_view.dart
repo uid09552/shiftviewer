@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../services/shift_data_controller.dart';
@@ -24,6 +26,20 @@ class MonthView extends StatelessWidget {
     this.onDaysPainted,
   });
 
+  /// Height of a week row. The grid keeps this size instead of stretching to
+  /// whatever the window offers: a date cell holds a number and a few dots, so
+  /// a taller row is empty space, not more to read. It only shrinks below this
+  /// when the month would otherwise not fit.
+  static const double _rowHeight = 52;
+
+  /// Widest a single day cell gets, so the grid stays calendar-shaped on a wide
+  /// window rather than stretching into a band of flat, far-apart cells.
+  static const double _cellWidth = 76;
+
+  /// What the weekday labels take off the top, used only to work out how much
+  /// is left for the rows.
+  static const double _headerHeight = 28;
+
   @override
   Widget build(BuildContext context) {
     final firstOfMonth = DateTime(visibleMonth.year, visibleMonth.month, 1);
@@ -35,31 +51,48 @@ class MonthView extends StatelessWidget {
     final weeks = ((leading + daysInMonth) / 7).ceil();
     final today = dateKey(DateTime.now());
 
-    final grid = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const WeekdayHeader(),
-        for (int week = 0; week < weeks; week++)
-          Expanded(
-            child: Row(
-              children: [
-                for (int d = 0; d < 7; d++)
-                  Expanded(
-                    child: _buildDayCell(
-                      context,
-                      gridStart.add(Duration(days: week * 7 + d)),
-                      today,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final forRows = constraints.maxHeight - _headerHeight;
+        final rowHeight = forRows.isFinite && forRows > 0
+            ? math.min(_rowHeight, forRows / weeks)
+            : _rowHeight;
 
-    return onDaysPainted == null
-        ? grid
-        : DayPaintArea(onCommit: onDaysPainted!, child: grid);
+        final grid = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const WeekdayHeader(),
+            for (int week = 0; week < weeks; week++)
+              SizedBox(
+                height: rowHeight,
+                child: Row(
+                  children: [
+                    for (int d = 0; d < 7; d++)
+                      Expanded(
+                        child: _buildDayCell(
+                          context,
+                          gridStart.add(Duration(days: week * 7 + d)),
+                          today,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        );
+
+        return Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: _cellWidth * 7),
+            child: onDaysPainted == null
+                ? grid
+                : DayPaintArea(onCommit: onDaysPainted!, child: grid),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildDayCell(BuildContext context, DateTime day, DateTime today) {
@@ -67,6 +100,7 @@ class MonthView extends StatelessWidget {
     final inMonth = day.month == visibleMonth.month;
     final isToday = dateKey(day) == today;
     final isSelected = selectedDay != null && dateKey(day) == dateKey(selectedDay!);
+    final holiday = data.holidayOn(day);
     final plans = data.plansForDay(day);
 
     // Distinct shift colours for the day's markers (max 4 dots shown).
@@ -86,14 +120,16 @@ class MonthView extends StatelessWidget {
         : data.shiftById(wish.shiftId)?.displayColor ??
             theme.colorScheme.primary;
 
-    return Padding(
+    final cell = Padding(
       padding: const EdgeInsets.all(2),
       child: PaintableDay(
         day: dateKey(day),
         child: Material(
           color: isSelected
               ? theme.colorScheme.primaryContainer
-              : Colors.transparent,
+              : holiday != null
+                  ? theme.colorScheme.errorContainer.withValues(alpha: 0.35)
+                  : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
@@ -117,9 +153,11 @@ class MonthView extends StatelessWidget {
                     Text(
                       '${day.day}',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: inMonth
-                            ? theme.colorScheme.onSurface
-                            : theme.colorScheme.outline,
+                        color: holiday != null
+                            ? theme.colorScheme.error
+                            : inMonth
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.outline,
                         fontWeight:
                             isToday ? FontWeight.bold : FontWeight.normal,
                       ),
@@ -134,6 +172,9 @@ class MonthView extends StatelessWidget {
         ),
       ),
     );
+    return holiday == null
+        ? cell
+        : Tooltip(message: holiday.name, child: cell);
   }
 }
 

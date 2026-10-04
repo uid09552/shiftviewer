@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -9,6 +10,17 @@ import 'package:http/http.dart' as http;
 import 'app_settings.dart';
 import 'auth_browser.dart';
 import 'token_store.dart';
+
+/// A non-2xx answer from the OIDC token endpoint. The status code is what
+/// separates a refused refresh token (4xx — the session is over) from a
+/// server or network hiccup (5xx — worth trying again).
+class TokenEndpointException implements Exception {
+  final int statusCode;
+  final String body;
+  const TokenEndpointException(this.statusCode, this.body);
+  @override
+  String toString() => 'HTTP $statusCode: $body';
+}
 
 enum AuthStatus {
   initializing,
@@ -56,6 +68,24 @@ class AuthController extends ChangeNotifier {
   DateTime? _expiry;
   String? _error;
 
+  /// The renewal currently running, so parallel API calls all wait on one
+  /// token request instead of racing (and invalidating each other's rotated
+  /// refresh token).
+  Future<bool>? _refreshInFlight;
+
+  /// Renews the session shortly before the access token runs out.
+  Timer? _refreshTimer;
+
+  /// An access token this close to its expiry is treated as already gone, so
+  /// a request in flight can't be overtaken by it.
+  static const _expirySkew = Duration(seconds: 30);
+
+  /// How long before expiry the proactive renewal runs.
+  static const _refreshAhead = Duration(seconds: 60);
+
+  /// Delay before retrying a renewal that failed for a transient reason.
+  static const _refreshRetryDelay = Duration(seconds: 30);
+
   AuthStatus get status => _status;
   String? get accessToken => _accessToken;
   String? get errorMessage => _error;
@@ -67,6 +97,23 @@ class AuthController extends ChangeNotifier {
     if (claims == null) return null;
     return (claims['email'] ?? claims['preferred_username']) as String?;
   }
+
+  /// Realm roles on the access token (`realm_access.roles`), which is where
+  /// the backend reads them too. Only the `shift-*` roles matter to the app.
+  Set<String> get roles {
+    final claims = _decodeJwt(_accessToken) ??
+        _decodeJwt(_settings.bearerToken.trim());
+    final realm = claims?['realm_access'];
+    final list = realm is Map ? realm['roles'] : null;
+    return list is List ? list.map((e) => '$e').toSet() : const {};
+  }
+
+  /// `shift-planner` or `shift-admin`: may use the management screens.
+  bool get canManage =>
+      roles.contains('shift-planner') || roles.contains('shift-admin');
+
+  /// `shift-admin`: may also change the wish window and manage users.
+  bool get isAdmin => roles.contains('shift-admin');
 
   Map<String, dynamic>? _decodeJwt(String? token) {
     if (token == null || token.isEmpty) return null;
@@ -98,7 +145,7 @@ class AuthController extends ChangeNotifier {
   bool get _accessTokenValid =>
       _accessToken != null &&
       _expiry != null &&
-      DateTime.now().isBefore(_expiry!.subtract(const Duration(seconds: 30)));
+      DateTime.now().isBefore(_expiry!.subtract(_expirySkew));
 
   /// Startup: complete a pending web callback, or restore/refresh a stored
   /// session, or land on the login gate.
@@ -119,6 +166,7 @@ class AuthController extends ChangeNotifier {
 
       await _restoreTokens();
       if (_accessTokenValid) {
+        _scheduleProactiveRefresh();
         _setStatus(AuthStatus.authenticated);
       } else if (_refreshToken != null && _refreshToken!.isNotEmpty) {
         final ok = await _refresh();
@@ -147,6 +195,8 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
     _accessToken = null;
     _idToken = null;
     _refreshToken = null;
@@ -155,12 +205,26 @@ class AuthController extends ChangeNotifier {
     _setStatus(AuthStatus.unauthenticated);
   }
 
-  /// A currently-valid access token, refreshing first if needed.
-  Future<String?> validAccessToken() async {
-    if (_accessTokenValid) return _accessToken;
-    if (_refreshToken != null && _refreshToken!.isNotEmpty) {
-      if (await _refresh()) return _accessToken;
+  /// A currently-valid access token, renewing it from the refresh token first
+  /// when the cached one has run out.
+  ///
+  /// [forceRefresh] renews even when the cached token still looks valid — the
+  /// API client passes it after a 401, which is the server's word that the
+  /// token is no good whatever its stated expiry says.
+  ///
+  /// Returns null only when the session genuinely cannot be continued (no
+  /// refresh token, or the server refused it), which is the point at which the
+  /// user is sent back to the sign-in page. A renewal that failed for a
+  /// transient reason also yields null, but leaves the session in place so the
+  /// next attempt can succeed.
+  Future<String?> validAccessToken({bool forceRefresh = false}) async {
+    if (!forceRefresh && _accessTokenValid) return _accessToken;
+    if (_refreshToken == null || _refreshToken!.isEmpty) {
+      // Nothing left to renew with, so the session really is over.
+      if (_status == AuthStatus.authenticated) await logout();
+      return null;
     }
+    if (await _refresh()) return _accessToken;
     return null;
   }
 
@@ -222,11 +286,10 @@ class AuthController extends ChangeNotifier {
         expiry: result.accessTokenExpirationDateTime,
       );
       await _saveTokens();
+      notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Native refresh failed: $e');
-      await logout();
-      return false;
+      return _refreshFailed(e);
     }
   }
 
@@ -303,11 +366,10 @@ class AuthController extends ChangeNotifier {
       final res = await _postToken(body);
       _applyTokenJson(res);
       await _saveTokens();
+      notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Web refresh failed: $e');
-      await logout();
-      return false;
+      return _refreshFailed(e);
     }
   }
 
@@ -320,14 +382,79 @@ class AuthController extends ChangeNotifier {
         )
         .timeout(const Duration(seconds: 20));
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw 'HTTP ${res.statusCode}: ${res.body}';
+      throw TokenEndpointException(res.statusCode, res.body);
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   // ---- shared token handling ----
 
-  Future<bool> _refresh() => kIsWeb ? _webRefresh() : _nativeRefresh();
+  /// Renews the token set, joining the renewal already running when there is
+  /// one. Several calls failing at once (a screen full of requests hitting an
+  /// expired token together) must produce a single token request: with refresh
+  /// token rotation, parallel ones would invalidate each other.
+  Future<bool> _refresh() {
+    final running = _refreshInFlight;
+    if (running != null) return running;
+    final future = (kIsWeb ? _webRefresh() : _nativeRefresh())
+        .whenComplete(() => _refreshInFlight = null);
+    return _refreshInFlight = future;
+  }
+
+  /// OAuth error codes that mean the refresh token itself was refused, in the
+  /// text AppAuth wraps the server's answer in.
+  static final RegExp _refusedGrant = RegExp(
+    r'invalid_grant|invalid_token|invalid_client|unauthorized_client|'
+    r'session not active|token is not active',
+    caseSensitive: false,
+  );
+
+  /// Decides what a failed renewal means.
+  ///
+  /// A refused refresh token ends the session, and only then is the user sent
+  /// back to the sign-in page. A network blip or a server error is not the
+  /// user's fault and says nothing about the session: the tokens are kept and
+  /// a retry is armed, so a flaky connection never costs a login.
+  Future<bool> _refreshFailed(Object error) async {
+    final refused = _isRefused(error);
+    debugPrint('[auth] refresh failed '
+        '(${refused ? 'refused, signing out' : 'transient, keeping session'}): '
+        '$error');
+    if (refused) {
+      await logout();
+    } else if (_status == AuthStatus.authenticated) {
+      _armRefreshTimer(_refreshRetryDelay);
+    }
+    return false;
+  }
+
+  bool _isRefused(Object error) {
+    if (error is TokenEndpointException) {
+      // 4xx is the server rejecting the grant; 5xx is the server having a bad
+      // day, which the next attempt may well survive.
+      return error.statusCode >= 400 && error.statusCode < 500;
+    }
+    return _refusedGrant.hasMatch(error.toString());
+  }
+
+  /// Renews shortly before the access token runs out, so a session that is
+  /// only sitting idle never lands on an expired token in the first place.
+  void _scheduleProactiveRefresh() {
+    if (_refreshToken == null || _refreshToken!.isEmpty || _expiry == null) {
+      _refreshTimer?.cancel();
+      _refreshTimer = null;
+      return;
+    }
+    final due = _expiry!.subtract(_refreshAhead).difference(DateTime.now());
+    _armRefreshTimer(due.isNegative ? Duration.zero : due);
+  }
+
+  void _armRefreshTimer(Duration delay) {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer(delay, () {
+      if (_status == AuthStatus.authenticated) _refresh();
+    });
+  }
 
   void _applyTokenJson(Map<String, dynamic> json) {
     final expiresIn = (json['expires_in'] as num?)?.toInt() ?? 300;
@@ -349,6 +476,7 @@ class AuthController extends ChangeNotifier {
     if (id != null) _idToken = id;
     if (refresh != null) _refreshToken = refresh;
     _expiry = expiry ?? DateTime.now().add(const Duration(minutes: 5));
+    _scheduleProactiveRefresh();
   }
 
   Future<void> _saveTokens() async {
@@ -398,6 +526,7 @@ class AuthController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _http.close();
     super.dispose();
   }

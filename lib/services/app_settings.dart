@@ -22,6 +22,11 @@ class AppSettings {
   static const defaultIssuer =
       'https://portainer.mhmhkh.org/auth/realms/shift';
 
+  /// Default OAuth scopes: the standard OIDC set, the backend's `shift-org`
+  /// scope, and `offline_access` so Keycloak issues an offline refresh token —
+  /// a session then survives the SSO session timeout instead of ending with it.
+  static const defaultScopes = 'openid profile email shift-org offline_access';
+
   /// Base URL of the API, e.g. `http://localhost/api/v1`.
   final String baseUrl;
 
@@ -48,8 +53,7 @@ class AppSettings {
   /// Redirect URI registered in Keycloak for this app.
   final String oidcRedirectUri;
 
-  /// Space-separated OAuth scopes. Not shown in the UI; includes the backend
-  /// `shift-org` scope alongside the standard OIDC scopes.
+  /// Space-separated OAuth scopes. Not shown in the UI; see [defaultScopes].
   final String oidcScopes;
 
   // ---- Appearance ----
@@ -70,7 +74,7 @@ class AppSettings {
     this.oidcIssuer = defaultIssuer,
     this.oidcClientId = 'shift-app',
     this.oidcRedirectUri = webRedirectUri,
-    this.oidcScopes = 'openid profile email shift-org',
+    this.oidcScopes = defaultScopes,
     this.languageCode = '',
   });
 
@@ -83,7 +87,7 @@ class AppSettings {
       oidcIssuer: defaultIssuer,
       oidcClientId: 'shift-app',
       oidcRedirectUri: kIsWeb ? webRedirectUri : nativeRedirectUri,
-      oidcScopes: 'openid profile email shift-org',
+      oidcScopes: defaultScopes,
     );
   }
 
@@ -161,9 +165,19 @@ class AppSettings {
       oidcIssuer: json['oidcIssuer'] as String? ?? def.oidcIssuer,
       oidcClientId: json['oidcClientId'] as String? ?? def.oidcClientId,
       oidcRedirectUri: json['oidcRedirectUri'] as String? ?? def.oidcRedirectUri,
-      oidcScopes: json['oidcScopes'] as String? ?? def.oidcScopes,
+      oidcScopes: _withOfflineAccess(json['oidcScopes'] as String?, def),
       languageCode: json['languageCode'] as String? ?? '',
     );
+  }
+
+  /// Scopes are persisted but never editable in the UI, so a settings file
+  /// written before `offline_access` was added would otherwise pin the app to
+  /// the old scope set forever. Add it back on read.
+  static String _withOfflineAccess(String? stored, AppSettings def) {
+    final scopes = stored?.trim();
+    if (scopes == null || scopes.isEmpty) return def.oidcScopes;
+    if (scopes.split(' ').contains('offline_access')) return scopes;
+    return '$scopes offline_access';
   }
 }
 

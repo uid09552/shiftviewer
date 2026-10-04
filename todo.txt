@@ -1,1 +1,1 @@
-/
+1) why compiled .app file is more than 400Mb. too big for the functionallity.

@@ -5,6 +5,7 @@ import '../l10n/l10n_helpers.dart';
 import '../models/models.dart';
 import '../services/day_insights.dart';
 import '../services/shift_data_controller.dart';
+import 'detail_list_sheet.dart';
 
 /// The detail sheets behind a tap in the day view: one for a shift, one for a
 /// person.
@@ -103,6 +104,109 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
   /// through its waiting state on every rebuild.
   late final Future<DayAnalysis> _analysis = data.analysisForDay(day);
 
+  /// This shift's plans on the day, optionally narrowed to who turned up.
+  List<ConfirmedShiftPlan> _plans({bool? present}) => data
+      .allPlansForDay(day)
+      .where(
+        (p) =>
+            p.shiftId == shiftId && (present == null || p.isPresent == present),
+      )
+      .toList();
+
+  /// Opens the people behind one of this sheet's numbers.
+  void _showPeople(
+    BuildContext context,
+    String title, {
+    required String subtitle,
+    required List<ConfirmedShiftPlan> plans,
+    bool showShift = false,
+    bool showHours = false,
+    Color? accent,
+    IconData icon = Icons.groups_outlined,
+  }) {
+    showDetailListSheet(
+      context,
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      accent: accent,
+      entries: peopleEntries(
+        context,
+        data: data,
+        day: day,
+        plans: plans,
+        showShift: showShift,
+        showHours: showHours,
+      ),
+    );
+  }
+
+  /// Everyone who wished for this shift on this day.
+  void _showWishes(BuildContext context, ShiftInsight insight) {
+    showDetailListSheet(
+      context,
+      title: insight.shift?.name ?? context.l10n.offNotScheduled,
+      subtitle: context.l10n.sectionWishes,
+      icon: Icons.star_border_rounded,
+      accent: insight.shift?.displayColor,
+      entries: _wishEntries(context),
+    );
+  }
+
+  /// Who worked this shift on one day of the week the sheet is showing.
+  void _showWeekDay(BuildContext context, ShiftInsight insight, int weekday) {
+    final monday = insight.day.subtract(
+      Duration(days: insight.day.weekday - 1),
+    );
+    final target = monday.add(Duration(days: weekday));
+    showDetailListSheet(
+      context,
+      title: insight.shift?.name ?? context.l10n.offNotScheduled,
+      subtitle: DateFormat.yMMMMEEEEd(context.dateLocale).format(target),
+      icon: Icons.groups_outlined,
+      accent: insight.shift?.displayColor,
+      entries: peopleEntries(
+        context,
+        data: data,
+        day: target,
+        plans: data
+            .allPlansForDay(target)
+            .where((p) => p.shiftId == shiftId && p.isPresent)
+            .toList(),
+      ),
+    );
+  }
+
+  /// The wishes placed for this shift on this day, each saying whether the
+  /// roster honoured it.
+  List<DetailEntry> _wishEntries(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final rostered = {for (final p in _plans(present: true)) p.employeeId};
+    final wishes = data.wishesForDay(day).where((w) => w.shiftId == shiftId);
+
+    return [
+      for (final wish in wishes)
+        () {
+          final granted = rostered.contains(wish.employeeId);
+          return DetailEntry(
+            title: data.employeeById(wish.employeeId)?.name ?? wish.employeeId,
+            subtitle: granted ? l10n.wishGranted : l10n.wishNotGranted,
+            icon: granted ? Icons.star_rounded : Icons.star_border_rounded,
+            color: granted
+                ? theme.colorScheme.tertiary
+                : theme.colorScheme.outline,
+            onTap: () => showEmployeeInsightsSheet(
+              context,
+              data: data,
+              day: day,
+              employeeId: wish.employeeId,
+            ),
+          );
+        }(),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     // The roster half renders at once; the analysis half arrives later and
@@ -170,7 +274,11 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
               ),
             ),
             if ((insight.shift?.shortName ?? '').isNotEmpty)
-              _Pill(text: insight.shift!.shortName, color: color),
+              _Pill(
+                text: insight.shift!.shortName,
+                color: color,
+                onLongPress: _scheduleLongPress(context, insight.shift),
+              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -184,12 +292,14 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
                 icon: Icons.schedule,
                 text: '${times.startTime} – ${times.endTime}',
                 color: theme.colorScheme.primary,
+                onLongPress: _scheduleLongPress(context, insight.shift),
               )
             else if (insight.shift != null)
               _Pill(
                 icon: Icons.event_busy_outlined,
                 text: l10n.notScheduledOnWeekday,
                 color: theme.colorScheme.outline,
+                onLongPress: _scheduleLongPress(context, insight.shift),
               ),
             _coverageChip(context, insight),
             if (times != null && times.freeDaysAfterShift > 0)
@@ -197,41 +307,91 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
                 icon: Icons.bedtime_outlined,
                 text: l10n.restDaysAfter(times.freeDaysAfterShift),
                 color: theme.colorScheme.outline,
+                onLongPress: _scheduleLongPress(context, insight.shift),
               ),
           ],
         ),
         const SizedBox(height: 14),
         _StatRow(
           tiles: [
-            _Stat(label: l10n.statRostered, value: '${insight.rostered}'),
+            _Stat(
+              label: l10n.statRostered,
+              value: '${insight.rostered}',
+              onLongPress: () => _showPeople(
+                context,
+                insight.shift?.name ?? l10n.offNotScheduled,
+                subtitle: l10n.statRostered,
+                plans: _plans(),
+                accent: color,
+              ),
+            ),
             _Stat(
               label: l10n.statPresent,
               value: '${insight.present}',
               emphasis: color,
+              onLongPress: () => _showPeople(
+                context,
+                insight.shift?.name ?? l10n.offNotScheduled,
+                subtitle: l10n.statPresent,
+                plans: _plans(present: true),
+                accent: color,
+              ),
             ),
             _Stat(
               label: l10n.statAbsent,
               value: '${insight.absent}',
               emphasis: insight.absent > 0 ? theme.colorScheme.error : null,
+              onLongPress: () => _showPeople(
+                context,
+                insight.shift?.name ?? l10n.offNotScheduled,
+                subtitle: l10n.statAbsent,
+                plans: _plans(present: false),
+                accent: theme.colorScheme.error,
+                icon: Icons.person_off_outlined,
+              ),
             ),
             if (insight.plannedHours > 0)
               _Stat(
                 label: l10n.statPlannedHours,
                 value: _hours(context, insight.plannedHours),
+                onLongPress: () => _showPeople(
+                  context,
+                  insight.shift?.name ?? l10n.offNotScheduled,
+                  subtitle: l10n.statPlannedHours,
+                  plans: _plans(present: true),
+                  showHours: true,
+                  accent: color,
+                  icon: Icons.schedule,
+                ),
               ),
           ],
         ),
         if (times != null && insight.minRequired > 0) ...[
           const SizedBox(height: 12),
-          _CoverageMeter(insight: insight, color: color),
+          LongPressTarget(
+            onLongPress: _coverageLongPress(context, insight, l10n.statPresent),
+            child: _CoverageMeter(insight: insight, color: color),
+          ),
         ],
         if (insight.dayTotal > 0) ...[
           const SizedBox(height: 6),
-          Text(
-            '${l10n.dayHeadcount(insight.dayTotal)} · '
-            '${l10n.shareOfDay((insight.shareOfDay * 100).round())}',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.outline,
+          LongPressTarget(
+            onLongPress: () => _showPeople(
+              context,
+              l10n.detailsEveryoneWorking,
+              subtitle: DateFormat.yMMMMEEEEd(locale).format(insight.day),
+              plans: data
+                  .allPlansForDay(day)
+                  .where((p) => p.isPresent)
+                  .toList(),
+              showShift: true,
+            ),
+            child: Text(
+              '${l10n.dayHeadcount(insight.dayTotal)} · '
+              '${l10n.shareOfDay((insight.shareOfDay * 100).round())}',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
             ),
           ),
         ],
@@ -253,15 +413,28 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
                 _Pill(
                   text: '${absenceLabel(l10n, entry.key)} · ${entry.value}',
                   color: theme.colorScheme.error,
+                  onLongPress: () => _showPeople(
+                    context,
+                    absenceLabel(l10n, entry.key),
+                    subtitle: insight.shift?.name ?? l10n.offNotScheduled,
+                    plans: _plans(present: false)
+                        .where((p) => (p.absenceType ?? 'unknown') == entry.key)
+                        .toList(),
+                    accent: theme.colorScheme.error,
+                    icon: Icons.person_off_outlined,
+                  ),
                 ),
             ],
           ),
         ],
         if (shiftId != null) ...[
           _SectionTitle(l10n.sectionWishes, icon: Icons.star_border_rounded),
-          Text(
-            l10n.wishesPlaced(insight.wishes),
-            style: theme.textTheme.bodyMedium,
+          LongPressTarget(
+            onLongPress: () => _showWishes(context, insight),
+            child: Text(
+              l10n.wishesPlaced(insight.wishes),
+              style: theme.textTheme.bodyMedium,
+            ),
           ),
           if (insight.wishes > 0)
             Padding(
@@ -273,11 +446,18 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
                 ),
                 value: insight.wishesGranted / insight.wishes,
                 color: color,
+                onLongPress: () => _showWishes(context, insight),
               ),
             ),
         ],
         _SectionTitle(l10n.sectionWeekPattern, icon: Icons.bar_chart),
-        _WeekBars(counts: insight.weekPattern, day: insight.day, color: color),
+        _WeekBars(
+          counts: insight.weekPattern,
+          day: insight.day,
+          color: color,
+          onLongPressDay: (dayOfWeek) =>
+              _showWeekDay(context, insight, dayOfWeek),
+        ),
         _SectionTitle(l10n.sectionDayContext, icon: Icons.pie_chart_outline),
         _DaySplit(data: data, day: insight.day, highlightShiftId: shiftId),
         if (waiting || !insight.analysisReachable) ...[
@@ -285,6 +465,35 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
           _Footnote(waiting: waiting, text: l10n.analysisUnavailable),
         ],
       ],
+    );
+  }
+
+  /// A long press that opens [shift]'s week; null for the off bucket, which
+  /// has no schedule of its own.
+  VoidCallback? _scheduleLongPress(BuildContext context, Shift? shift) {
+    if (shift == null) return null;
+    return () => showDetailListSheet(
+      context,
+      title: shift.name,
+      subtitle: context.l10n.sectionSchedule,
+      icon: Icons.calendar_view_week,
+      accent: shift.displayColor,
+      entries: scheduleEntries(context, shift),
+    );
+  }
+
+  /// Whoever is present, behind whichever coverage verdict is on show.
+  VoidCallback _coverageLongPress(
+    BuildContext context,
+    ShiftInsight insight,
+    String subtitle,
+  ) {
+    return () => _showPeople(
+      context,
+      insight.shift?.name ?? context.l10n.offNotScheduled,
+      subtitle: subtitle,
+      plans: _plans(present: true),
+      accent: insight.shift?.displayColor,
     );
   }
 
@@ -297,24 +506,32 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
           icon: Icons.trending_down,
           text: l10n.coverageShort(insight.missing),
           color: theme.colorScheme.error,
+          onLongPress: _coverageLongPress(
+            context,
+            insight,
+            l10n.detailsMissingPeople(insight.missing),
+          ),
         );
       case Coverage.met:
         return _Pill(
           icon: Icons.check_circle_outline,
           text: l10n.coverageMet,
           color: Colors.green.shade700,
+          onLongPress: _coverageLongPress(context, insight, l10n.coverageMet),
         );
       case Coverage.over:
         return _Pill(
           icon: Icons.trending_up,
           text: l10n.coverageOver,
           color: theme.colorScheme.tertiary,
+          onLongPress: _coverageLongPress(context, insight, l10n.coverageOver),
         );
       case Coverage.unknown:
         return _Pill(
           icon: Icons.help_outline,
           text: l10n.coverageNoTarget,
           color: theme.colorScheme.outline,
+          onLongPress: _coverageLongPress(context, insight, l10n.statPresent),
         );
     }
   }
@@ -341,48 +558,63 @@ class _ShiftInsightsBodyState extends State<_ShiftInsightsBody> {
         priorityLabel(l10n, station.priority),
     ];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            load.id == null
-                ? Icons.help_outline
-                : Icons.desktop_windows_outlined,
-            size: 18,
-            color: load.understaffed
-                ? theme.colorScheme.error
-                : theme.colorScheme.primary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  load.id == null
-                      ? l10n.unassignedWorkstation
-                      : (load.name.isEmpty ? load.id! : load.name),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (notes.isNotEmpty)
-                  Text(
-                    notes.join(' · '),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                    ),
-                  ),
-              ],
+    return LongPressTarget(
+      onLongPress: () => _showPeople(
+        context,
+        load.id == null
+            ? l10n.unassignedWorkstation
+            : (load.name.isEmpty ? load.id! : load.name),
+        subtitle: notes.isEmpty
+            ? l10n.detailsAtWorkstation
+            : '${l10n.detailsAtWorkstation} · ${notes.join(' · ')}',
+        plans: _plans().where((p) => p.workstationId == load.id).toList(),
+        accent: color,
+        icon: Icons.desktop_windows_outlined,
+      ),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              load.id == null
+                  ? Icons.help_outline
+                  : Icons.desktop_windows_outlined,
+              size: 18,
+              color: load.understaffed
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.primary,
             ),
-          ),
-          const SizedBox(width: 8),
-          _Pill(text: l10n.peopleHere(load.present), color: color),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    load.id == null
+                        ? l10n.unassignedWorkstation
+                        : (load.name.isEmpty ? load.id! : load.name),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (notes.isNotEmpty)
+                    Text(
+                      notes.join(' · '),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            _Pill(text: l10n.peopleHere(load.present), color: color),
+          ],
+        ),
       ),
     );
   }
@@ -472,10 +704,14 @@ class _WeekBars extends StatelessWidget {
   final DateTime day;
   final Color color;
 
+  /// Lists who worked the bar's own day, Monday being 0.
+  final void Function(int weekday)? onLongPressDay;
+
   const _WeekBars({
     required this.counts,
     required this.day,
     required this.color,
+    this.onLongPressDay,
   });
 
   @override
@@ -494,39 +730,47 @@ class _WeekBars extends StatelessWidget {
         children: [
           for (var i = 0; i < counts.length; i++)
             Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    '${counts[i]}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Container(
-                    height: peak == 0 ? 2 : 2 + 40 * counts[i] / peak,
-                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                    decoration: BoxDecoration(
-                      color: color.withValues(
-                        alpha: i == day.weekday - 1 ? 1.0 : 0.35,
+              child: LongPressTarget(
+                onLongPress: onLongPressDay == null
+                    ? null
+                    : () => onLongPressDay!(i),
+                borderRadius: BorderRadius.circular(6),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${counts[i]}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
                       ),
-                      borderRadius: BorderRadius.circular(3),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    DateFormat.E(locale).format(monday.add(Duration(days: i))),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                      fontWeight: i == day.weekday - 1
-                          ? FontWeight.bold
-                          : FontWeight.normal,
+                    const SizedBox(height: 2),
+                    Container(
+                      height: peak == 0 ? 2 : 2 + 40 * counts[i] / peak,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        color: color.withValues(
+                          alpha: i == day.weekday - 1 ? 1.0 : 0.35,
+                        ),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.clip,
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      DateFormat.E(
+                        locale,
+                      ).format(monday.add(Duration(days: i))),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.outline,
+                        fontWeight: i == day.weekday - 1
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -581,6 +825,22 @@ class _DaySplit extends StatelessWidget {
                   data.shiftById(slice.shiftId)?.displayColor ??
                   theme.colorScheme.outline,
               dim: slice.shiftId != highlightShiftId,
+              onLongPress: () => showDetailListSheet(
+                context,
+                title: slice.name,
+                subtitle: l10n.detailsOnThisShift,
+                icon: Icons.groups_outlined,
+                accent: data.shiftById(slice.shiftId)?.displayColor,
+                entries: peopleEntries(
+                  context,
+                  data: data,
+                  day: day,
+                  plans: data
+                      .allPlansForDay(day)
+                      .where((p) => p.shiftId == slice.shiftId && p.isPresent)
+                      .toList(),
+                ),
+              ),
             ),
           ),
       ],
@@ -614,6 +874,163 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
 
   /// Started once, for the same reason as the shift sheet's analysis future.
   late final Future<Employee?> _detail = data.employeeDetail(employeeId);
+
+  /// This employee's plans across the loaded range, narrowed the way the tile
+  /// that was pressed counted them.
+  List<ConfirmedShiftPlan> _rangePlans({
+    bool? present,
+    String? onShiftId,
+    String? absenceType,
+  }) => employeePlansInRange(
+    data,
+    employeeId,
+    where: (p) {
+      if (present != null && p.isPresent != present) return false;
+      if (onShiftId != null && p.shiftId != onShiftId) return false;
+      if (absenceType != null && (p.absenceType ?? 'unknown') != absenceType) {
+        return false;
+      }
+      return true;
+    },
+  );
+
+  /// Opens the days behind one of the range totals.
+  void _showDays(
+    BuildContext context,
+    String subtitle, {
+    required List<ConfirmedShiftPlan> plans,
+    bool showHours = false,
+    Color? accent,
+    IconData icon = Icons.calendar_month_outlined,
+  }) {
+    showDetailListSheet(
+      context,
+      title: data.employeeById(employeeId)?.name ?? employeeId,
+      subtitle: subtitle,
+      icon: icon,
+      accent: accent,
+      entries: dayEntries(
+        context,
+        data: data,
+        plans: plans,
+        showHours: showHours,
+      ),
+    );
+  }
+
+  /// Opens the people rostered alongside this employee on [day], narrowed by
+  /// [where] to the shift or the workstation that was pressed.
+  void _showColleagues(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required bool Function(ConfirmedShiftPlan plan) where,
+    Color? accent,
+    IconData icon = Icons.groups_outlined,
+    bool showShift = false,
+  }) {
+    showDetailListSheet(
+      context,
+      title: title,
+      subtitle: subtitle,
+      icon: icon,
+      accent: accent,
+      entries: peopleEntries(
+        context,
+        data: data,
+        day: day,
+        plans: data.allPlansForDay(day).where(where).toList(),
+        showShift: showShift,
+      ),
+    );
+  }
+
+  /// A long press that opens [shift]'s week.
+  VoidCallback? _scheduleLongPress(BuildContext context, Shift? shift) {
+    if (shift == null) return null;
+    return () => showDetailListSheet(
+      context,
+      title: shift.name,
+      subtitle: context.l10n.sectionSchedule,
+      icon: Icons.calendar_view_week,
+      accent: shift.displayColor,
+      entries: scheduleEntries(context, shift),
+    );
+  }
+
+  /// Colleagues who hold the same capability, as far as the loaded records
+  /// say — the list endpoint may not carry capabilities at all, in which case
+  /// only the pressed capability itself is described.
+  void _showCapability(BuildContext context, Capability capability) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final others = [
+      for (final e in data.employees)
+        if (e.id != employeeId &&
+            e.capabilities.any((c) => c.id == capability.id))
+          e,
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    showDetailListSheet(
+      context,
+      title: capability.name,
+      subtitle: capability.skillGroup == null
+          ? l10n.skillLevel(capability.level)
+          : l10n.capabilityOfLevel(capability.skillGroup!, capability.level),
+      icon: Icons.workspace_premium_outlined,
+      accent: theme.colorScheme.secondary,
+      emptyText: l10n.noOthersWithCapability,
+      entries: [
+        for (final other in others)
+          DetailEntry(
+            title: other.name,
+            subtitle: () {
+              final held = other.capabilities.firstWhere(
+                (c) => c.id == capability.id,
+              );
+              return held.skillGroup == null
+                  ? l10n.skillLevel(held.level)
+                  : l10n.capabilityOfLevel(held.skillGroup!, held.level);
+            }(),
+            icon: Icons.person_outline,
+            color: theme.colorScheme.secondary,
+            onTap: () => showEmployeeInsightsSheet(
+              context,
+              data: data,
+              day: day,
+              employeeId: other.id,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The wishes this employee placed in the loaded range, each with the
+  /// outcome the hit rate counted.
+  List<DetailEntry> _wishEntries(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final locale = context.dateLocale;
+
+    return [
+      for (final outcome in employeeWishesInRange(data, employeeId))
+        DetailEntry(
+          title: l10n.detailsOnDay(
+            DateFormat.E(locale).format(outcome.wish.date),
+            DateFormat.yMMMd(locale).format(outcome.wish.date),
+          ),
+          subtitle:
+              '${data.shiftById(outcome.wish.shiftId)?.name ?? l10n.unknownShift}'
+              ' · ${outcome.granted ? l10n.wishGranted : l10n.wishNotGranted}',
+          icon: outcome.granted
+              ? Icons.star_rounded
+              : Icons.star_border_rounded,
+          color: outcome.granted
+              ? theme.colorScheme.tertiary
+              : theme.colorScheme.outline,
+        ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -706,12 +1123,20 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
               _Pill(
                 text: shift?.name ?? l10n.offNotScheduled,
                 color: shift?.displayColor ?? theme.colorScheme.outline,
+                onLongPress: () => _showColleagues(
+                  context,
+                  title: shift?.name ?? l10n.offNotScheduled,
+                  subtitle: l10n.detailsOnThisShift,
+                  where: (p) => p.shiftId == plan.shiftId,
+                  accent: shift?.displayColor,
+                ),
               ),
               if (shift?.timesFor(insight.day) case final times?)
                 _Pill(
                   icon: Icons.schedule,
                   text: '${times.startTime} – ${times.endTime}',
                   color: theme.colorScheme.primary,
+                  onLongPress: _scheduleLongPress(context, shift),
                 ),
               _Pill(
                 icon: Icons.desktop_windows_outlined,
@@ -719,12 +1144,32 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
                     data.workstationById(plan.workstationId)?.name ??
                     l10n.unassignedWorkstation,
                 color: theme.colorScheme.outline,
+                onLongPress: () => _showColleagues(
+                  context,
+                  title:
+                      data.workstationById(plan.workstationId)?.name ??
+                      l10n.unassignedWorkstation,
+                  subtitle: l10n.detailsAtWorkstation,
+                  where: (p) => p.workstationId == plan.workstationId,
+                  icon: Icons.desktop_windows_outlined,
+                  showShift: true,
+                ),
               ),
               if (!plan.isPresent)
                 _Pill(
                   icon: Icons.person_off_outlined,
                   text: absenceLabel(l10n, plan.absenceType),
                   color: theme.colorScheme.error,
+                  onLongPress: () => _showDays(
+                    context,
+                    absenceLabel(l10n, plan.absenceType),
+                    plans: _rangePlans(
+                      present: false,
+                      absenceType: plan.absenceType ?? 'unknown',
+                    ),
+                    accent: theme.colorScheme.error,
+                    icon: Icons.person_off_outlined,
+                  ),
                 ),
             ],
           ),
@@ -754,11 +1199,22 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
               _Stat(
                 label: l10n.statDaysRostered,
                 value: '${insight.rosteredDays}',
+                onLongPress: () => _showDays(
+                  context,
+                  l10n.statDaysRostered,
+                  plans: _rangePlans(),
+                ),
               ),
               _Stat(
                 label: l10n.statDaysWorked,
                 value: '${insight.workedDays}',
                 emphasis: theme.colorScheme.primary,
+                onLongPress: () => _showDays(
+                  context,
+                  l10n.statDaysWorked,
+                  plans: _rangePlans(present: true),
+                  accent: theme.colorScheme.primary,
+                ),
               ),
               _Stat(
                 label: l10n.statAbsent,
@@ -766,10 +1222,24 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
                 emphasis: insight.absentDays > 0
                     ? theme.colorScheme.error
                     : null,
+                onLongPress: () => _showDays(
+                  context,
+                  l10n.statAbsent,
+                  plans: _rangePlans(present: false),
+                  accent: theme.colorScheme.error,
+                  icon: Icons.person_off_outlined,
+                ),
               ),
               _Stat(
                 label: l10n.statPlannedHours,
                 value: _hours(context, insight.plannedHours),
+                onLongPress: () => _showDays(
+                  context,
+                  l10n.statPlannedHours,
+                  plans: _rangePlans(present: true),
+                  showHours: true,
+                  icon: Icons.schedule,
+                ),
               ),
             ],
           ),
@@ -782,6 +1252,14 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
               trailing: l10n.monthlyLoad((load * 100).round()),
               value: load.clamp(0.0, 1.0),
               color: theme.colorScheme.primary,
+              onLongPress: () => _showDays(
+                context,
+                l10n.statPlannedHours,
+                plans: _rangePlans(present: true),
+                showHours: true,
+                accent: theme.colorScheme.primary,
+                icon: Icons.schedule,
+              ),
             ),
           ],
           if (insight.daysByShift.isNotEmpty) ...[
@@ -796,6 +1274,12 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
                   color:
                       data.shiftById(entry.key)?.displayColor ??
                       theme.colorScheme.outline,
+                  onLongPress: () => _showDays(
+                    context,
+                    data.shiftById(entry.key)?.name ?? l10n.unknownShift,
+                    plans: _rangePlans(present: true, onShiftId: entry.key),
+                    accent: data.shiftById(entry.key)?.displayColor,
+                  ),
                 ),
               ),
           ],
@@ -809,6 +1293,16 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
                   _Pill(
                     text: '${absenceLabel(l10n, entry.key)} · ${entry.value}',
                     color: theme.colorScheme.error,
+                    onLongPress: () => _showDays(
+                      context,
+                      absenceLabel(l10n, entry.key),
+                      plans: _rangePlans(
+                        present: false,
+                        absenceType: entry.key,
+                      ),
+                      accent: theme.colorScheme.error,
+                      icon: Icons.person_off_outlined,
+                    ),
                   ),
               ],
             ),
@@ -823,6 +1317,14 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
               ),
               value: insight.wishHitRate ?? 0,
               color: theme.colorScheme.tertiary,
+              onLongPress: () => showDetailListSheet(
+                context,
+                title: employee?.name ?? employeeId,
+                subtitle: l10n.sectionWishes,
+                icon: Icons.star_border_rounded,
+                accent: theme.colorScheme.tertiary,
+                entries: _wishEntries(context),
+              ),
             ),
           ],
         ],
@@ -851,6 +1353,7 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
                       ? c.name
                       : '${c.name} · ${l10n.skillLevel(c.level)}',
                   color: theme.colorScheme.secondary,
+                  onLongPress: () => _showCapability(context, c),
                 ),
             ],
           ),
@@ -874,6 +1377,10 @@ class _EmployeeInsightsBodyState extends State<_EmployeeInsightsBody> {
                 _Pill(
                   text: s.name.isEmpty ? s.shortName : s.name,
                   color: data.shiftById(s.id)?.displayColor ?? s.displayColor,
+                  onLongPress: _scheduleLongPress(
+                    context,
+                    data.shiftById(s.id) ?? s,
+                  ),
                 ),
             ],
           ),
@@ -929,7 +1436,15 @@ class _Stat {
   /// Colours the number when it is the one worth looking at.
   final Color? emphasis;
 
-  const _Stat({required this.label, required this.value, this.emphasis});
+  /// Lists the rows the number was counted from.
+  final VoidCallback? onLongPress;
+
+  const _Stat({
+    required this.label,
+    required this.value,
+    this.emphasis,
+    this.onLongPress,
+  });
 }
 
 /// The tiles wrap rather than shrink, so four of them survive a narrow phone.
@@ -952,37 +1467,40 @@ class _StatRow extends StatelessWidget {
             for (final tile in tiles)
               SizedBox(
                 width: width,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.5,
+                child: LongPressTarget(
+                  onLongPress: tile.onLongPress,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
                     ),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tile.value,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: tile.emphasis,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tile.value,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: tile.emphasis,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        tile.label,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.outline,
+                        Text(
+                          tile.label,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.outline,
+                          ),
+                          maxLines: 2,
                         ),
-                        maxLines: 2,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1004,12 +1522,16 @@ class _ProgressLine extends StatelessWidget {
   /// Fades the whole line, for rows that are context rather than the subject.
   final bool dim;
 
+  /// Lists what the bar is measuring.
+  final VoidCallback? onLongPress;
+
   const _ProgressLine({
     required this.label,
     required this.value,
     required this.color,
     this.trailing,
     this.dim = false,
+    this.onLongPress,
   });
 
   @override
@@ -1017,39 +1539,42 @@ class _ProgressLine extends StatelessWidget {
     final theme = Theme.of(context);
     return Opacity(
       opacity: dim ? 0.6 : 1,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (trailing != null)
-                Text(
-                  trailing!,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.outline,
+      child: LongPressTarget(
+        onLongPress: onLongPress,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: value.isFinite ? value.clamp(0.0, 1.0) : 0,
-              minHeight: 6,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation(color),
+                if (trailing != null)
+                  Text(
+                    trailing!,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 3),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: value.isFinite ? value.clamp(0.0, 1.0) : 0,
+                minHeight: 6,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation(color),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1061,32 +1586,44 @@ class _Pill extends StatelessWidget {
   final Color color;
   final IconData? icon;
 
-  const _Pill({required this.text, required this.color, this.icon});
+  /// Lists what the pill summarises.
+  final VoidCallback? onLongPress;
+
+  const _Pill({
+    required this.text,
+    required this.color,
+    this.icon,
+    this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w600,
+    return LongPressTarget(
+      onLongPress: onLongPress,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

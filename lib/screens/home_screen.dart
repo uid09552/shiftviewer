@@ -18,6 +18,7 @@ import '../widgets/resizable_pane.dart';
 import '../widgets/shift_wish_sheet.dart';
 import '../widgets/week_view.dart';
 import '../widgets/wish_planner_view.dart';
+import 'admin/management_screen.dart';
 import 'settings_screen.dart';
 
 /// The views the bottom bar switches between. Exactly one fills the body at a
@@ -72,9 +73,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final settings = context.read<SettingsController>().settings;
     final data = context.read<ShiftDataController>();
     data.updateSettings(settings);
-    // Refresh the token (may trigger a silent refresh) before loading data.
-    final token = await context.read<AuthController>().validAccessToken();
-    data.updateAccessToken(token);
+    // No token is fetched here: every request asks the auth layer for one and
+    // gets a renewed token when the old one has run out.
+    data.updateTokenProvider(context.read<AuthController>().validAccessToken);
     final range = _visibleRange();
     await data.refresh(range.$1, range.$2);
     if (mounted) _maybePreselectEmployee();
@@ -182,6 +183,15 @@ class _HomeScreenState extends State<HomeScreen> {
         data: data, from: range.$1, to: range.$2);
   }
 
+  /// The planner/admin area. The roster may have changed there, so the
+  /// calendars reload on the way back.
+  Future<void> _openManagement() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ManagementScreen()),
+    );
+    if (mounted) _maybeRefresh();
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -250,6 +260,8 @@ class _HomeScreenState extends State<HomeScreen> {
               switch (value) {
                 case 'calendar':
                   _exportToCalendar(data);
+                case 'management':
+                  _openManagement();
                 case 'settings':
                   _openSettings();
                 case _:
@@ -257,6 +269,18 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
             itemBuilder: (context) => [
+              // Only shift-planner and shift-admin get the management area;
+              // the backend would refuse everyone else's writes anyway.
+              if (context.read<AuthController>().canManage)
+                PopupMenuItem(
+                  value: 'management',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.admin_panel_settings_outlined),
+                    title: Text(l10n.admManagement),
+                  ),
+                ),
               PopupMenuItem(
                 value: 'calendar',
                 child: ListTile(
@@ -372,7 +396,11 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
+          // Loose, not [Expanded]: a calendar that asks for less than the body
+          // offers (the month grid keeps a fixed row height) is given just what
+          // it asks for, so the legend sits under the grid rather than across
+          // a gap from it.
+          Flexible(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
               child: calendar,

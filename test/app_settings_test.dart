@@ -23,4 +23,27 @@ void main() {
     final legacy = const AppSettings().toJson()..remove('languageCode');
     expect(AppSettings.fromJson(legacy).languageCode, '');
   });
+
+  test('offline_access is requested by default', () {
+    expect(const AppSettings().scopeList, contains('offline_access'));
+    expect(AppSettings.initial().scopeList, contains('offline_access'));
+  });
+
+  test('settings written before offline_access gain it on load', () {
+    final legacy = const AppSettings().toJson()
+      ..['oidcScopes'] = 'openid profile email shift-org';
+    expect(AppSettings.fromJson(legacy).scopeList, [
+      'openid',
+      'profile',
+      'email',
+      'shift-org',
+      'offline_access',
+    ]);
+  });
+
+  test('a scope set that already has offline_access is left alone', () {
+    final stored = const AppSettings().toJson()
+      ..['oidcScopes'] = 'offline_access openid';
+    expect(AppSettings.fromJson(stored).oidcScopes, 'offline_access openid');
+  });
 }

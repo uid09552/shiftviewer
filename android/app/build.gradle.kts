@@ -41,15 +41,6 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-
-    // Skip native-symbol stripping. Works around an NDK 28 `llvm-strip`
-    // "No such file or directory" failure on libflutter.so seen when building
-    // via WSL; harmless for debug/dev builds.
-    packaging {
-        jniLibs {
-            keepDebugSymbols.add("**/*.so")
-        }
-    }
 }
 
 flutter {
