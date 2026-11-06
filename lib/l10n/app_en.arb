@@ -284,6 +284,8 @@
   "languageSystem": "System default",
   "languageEnglish": "English",
   "languageGerman": "German",
+  "swipeNavigation": "Swipe to change date",
+  "swipeNavigationHint": "Swipe left or right in the day, week and month views to move to the next or previous day, week or month.",
 
   "shiftInsights": "Shift details",
   "employeeInsights": "Employee",

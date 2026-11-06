@@ -458,6 +458,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get languageGerman => 'German';
 
   @override
+  String get swipeNavigation => 'Swipe to change date';
+
+  @override
+  String get swipeNavigationHint =>
+      'Swipe left or right in the day, week and month views to move to the next or previous day, week or month.';
+
+  @override
   String get shiftInsights => 'Shift details';
 
   @override

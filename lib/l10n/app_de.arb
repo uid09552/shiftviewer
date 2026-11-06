@@ -253,6 +253,8 @@
   "languageSystem": "Systemsprache",
   "languageEnglish": "Englisch",
   "languageGerman": "Deutsch",
+  "swipeNavigation": "Wischen zum Datumswechsel",
+  "swipeNavigationHint": "In der Tages-, Wochen- und Monatsansicht nach links oder rechts wischen, um zum nächsten oder vorherigen Tag, zur nächsten oder vorherigen Woche bzw. zum nächsten oder vorherigen Monat zu wechseln.",
 
   "shiftInsights": "Dienstdetails",
   "employeeInsights": "Mitarbeiter",

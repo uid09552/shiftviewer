@@ -45,8 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _preselectDone = false;
 
   /// Height the user dragged the day view's summary pane to; null means the
-  /// default share. It is the requested value — [_summaryFor] clamps it to what
-  /// currently fits.
+  /// pane sizes itself to its content. It is the requested value —
+  /// [_summaryFor] clamps it to what currently fits.
   double? _summaryHeight;
 
   /// Height available to the day view's two panes, captured during layout so
@@ -55,6 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Fling speed (logical px/s) that counts as a day-changing swipe.
   static const double _swipeMinVelocity = 300;
+
+  final GlobalKey _summaryKey = GlobalKey();
 
   static const double _minSummary = 56;
   static const double _minList = 120;
@@ -352,46 +354,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Makes a sideways swipe step the visible range by one day, week or month
+  /// (left = forward, right = back), unless turned off in the settings.
+  Widget _swipeable(Widget child) {
+    if (!context.watch<SettingsController>().settings.swipeNavigation) {
+      return child;
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v.abs() < _swipeMinVelocity) return;
+        _step(v < 0 ? 1 : -1);
+      },
+      child: child,
+    );
+  }
+
   /// The single view the bottom bar currently points at.
   Widget _viewBody(BuildContext context, ShiftDataController data) {
     switch (_view) {
       case HomeView.month:
-        return _withLegend(
-          data,
-          MonthView(
-            visibleMonth: _anchor,
-            selectedDay: _selectedDay,
-            data: data,
-            onDaySelected: _selectDay,
-            onDaysPainted: (days) => _editWishes(days, data),
+        return _swipeable(
+          _withLegend(
+            data,
+            MonthView(
+              visibleMonth: _anchor,
+              selectedDay: _selectedDay,
+              data: data,
+              onDaySelected: _selectDay,
+              onDaysPainted: (days) => _editWishes(days, data),
+            ),
           ),
         );
       case HomeView.week:
-        return _withLegend(
-          data,
-          WeekView(
-            visibleWeek: _anchor,
-            selectedDay: _selectedDay,
-            data: data,
-            onDaySelected: _selectDay,
-            onDaysPainted: (days) => _editWishes(days, data),
+        return _swipeable(
+          _withLegend(
+            data,
+            WeekView(
+              visibleWeek: _anchor,
+              selectedDay: _selectedDay,
+              data: data,
+              onDaySelected: _selectDay,
+              onDaysPainted: (days) => _editWishes(days, data),
+            ),
           ),
         );
       case HomeView.day:
         return LayoutBuilder(
           builder: (context, constraints) {
             _paneArea = constraints.maxHeight;
-            // Swiping sideways steps the date: left for the next day, right for
-            // the previous one.
-            return GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragEnd: (details) {
-                final v = details.primaryVelocity ?? 0;
-                if (v.abs() < _swipeMinVelocity) return;
-                _step(v < 0 ? 1 : -1);
-              },
-              child: _dayPanes(context, data, constraints.maxHeight),
-            );
+            return _swipeable(_dayPanes(context, data, constraints.maxHeight));
           },
         );
       case HomeView.wishes:
@@ -442,10 +455,19 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ResizablePane(
-          height: _summaryFor(total),
+          key: _summaryKey,
+          // Until the user drags the handle the summary is as tall as its
+          // content (up to what leaves the list its minimum), so the hero,
+          // date header and wish chip are all visible.
+          height: _summaryHeight == null ? null : _summaryFor(total),
+          maxHeight: math.max(_minSummary, total - _minList),
           tooltip: context.l10n.resizeDayOverview,
-          onResize: (delta) => setState(
-              () => _summaryHeight = _summaryFor(_paneArea) + delta),
+          onResize: (delta) => setState(() {
+            final current = _summaryHeight ??
+                _summaryKey.currentContext?.size?.height ??
+                _summaryFor(_paneArea);
+            _summaryHeight = _summaryFor(_paneArea, requested: current + delta);
+          }),
           onReset: () => setState(() => _summaryHeight = null),
           child: DayDetailSummary(day: _selectedDay, data: data),
         ),
@@ -459,8 +481,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Effective height of the summary pane for a pane area of [total]; the shift
   /// list keeps whatever is left. The lower bound wins when the window is too
   /// short for both minimums.
-  double _summaryFor(double total) {
-    final requested = _summaryHeight ?? total * _defaultSummaryShare;
+  double _summaryFor(double total, {double? requested}) {
+    requested ??= _summaryHeight ?? total * _defaultSummaryShare;
     return requested
         .clamp(_minSummary, math.max(_minSummary, total - _minList))
         .toDouble();

@@ -65,6 +65,10 @@ class AppSettings {
   /// Languages the app ships translations for.
   static const supportedLanguageCodes = ['en', 'de'];
 
+  /// Whether swiping sideways on the day/week/month views steps to the
+  /// previous/next day, week or month.
+  final bool swipeNavigation;
+
   const AppSettings({
     this.baseUrl = defaultApiBase,
     this.username = '',
@@ -76,6 +80,7 @@ class AppSettings {
     this.oidcRedirectUri = webRedirectUri,
     this.oidcScopes = defaultScopes,
     this.languageCode = '',
+    this.swipeNavigation = true,
   });
 
   /// First-run defaults. Backend + IdP are served over HTTPS at
@@ -126,6 +131,7 @@ class AppSettings {
     String? oidcRedirectUri,
     String? oidcScopes,
     String? languageCode,
+    bool? swipeNavigation,
   }) {
     return AppSettings(
       baseUrl: baseUrl ?? this.baseUrl,
@@ -138,6 +144,7 @@ class AppSettings {
       oidcRedirectUri: oidcRedirectUri ?? this.oidcRedirectUri,
       oidcScopes: oidcScopes ?? this.oidcScopes,
       languageCode: languageCode ?? this.languageCode,
+      swipeNavigation: swipeNavigation ?? this.swipeNavigation,
     );
   }
 
@@ -152,6 +159,7 @@ class AppSettings {
         'oidcRedirectUri': oidcRedirectUri,
         'oidcScopes': oidcScopes,
         'languageCode': languageCode,
+        'swipeNavigation': swipeNavigation,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -167,6 +175,7 @@ class AppSettings {
       oidcRedirectUri: json['oidcRedirectUri'] as String? ?? def.oidcRedirectUri,
       oidcScopes: _withOfflineAccess(json['oidcScopes'] as String?, def),
       languageCode: json['languageCode'] as String? ?? '',
+      swipeNavigation: json['swipeNavigation'] as bool? ?? true,
     );
   }
 

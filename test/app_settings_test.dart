@@ -24,6 +24,14 @@ void main() {
     expect(AppSettings.fromJson(legacy).languageCode, '');
   });
 
+  test('swipe navigation is on by default and survives a JSON round trip', () {
+    expect(const AppSettings().swipeNavigation, isTrue);
+    final off = const AppSettings(swipeNavigation: false);
+    expect(AppSettings.fromJson(off.toJson()).swipeNavigation, isFalse);
+    final legacy = const AppSettings().toJson()..remove('swipeNavigation');
+    expect(AppSettings.fromJson(legacy).swipeNavigation, isTrue);
+  });
+
   test('offline_access is requested by default', () {
     expect(const AppSettings().scopeList, contains('offline_access'));
     expect(AppSettings.initial().scopeList, contains('offline_access'));
