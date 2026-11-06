@@ -23,7 +23,7 @@ import 'settings_screen.dart';
 
 /// The views the bottom bar switches between. Exactly one fills the body at a
 /// time — the panes are gone, so each view gets the whole screen.
-enum HomeView { month, week, day, wishes }
+enum HomeView { day, week, month, wishes }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -325,9 +325,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (i) => _switchView(HomeView.values[i]),
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.calendar_month_outlined),
-            selectedIcon: const Icon(Icons.calendar_month),
-            label: l10n.navMonth,
+            icon: const Icon(Icons.event_note_outlined),
+            selectedIcon: const Icon(Icons.event_note),
+            label: l10n.navDay,
           ),
           NavigationDestination(
             icon: const Icon(Icons.calendar_view_week_outlined),
@@ -335,9 +335,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: l10n.navWeek,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.event_note_outlined),
-            selectedIcon: const Icon(Icons.event_note),
-            label: l10n.navDay,
+            icon: const Icon(Icons.calendar_month_outlined),
+            selectedIcon: const Icon(Icons.calendar_month),
+            label: l10n.navMonth,
           ),
           NavigationDestination(
             icon: const Icon(Icons.star_border_rounded),
