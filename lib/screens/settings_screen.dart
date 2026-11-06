@@ -33,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Empty means "follow the device locale".
   late String _languageCode;
+  late bool _swipeNavigation;
 
   @override
   void initState() {
@@ -47,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _oidcClientId = TextEditingController(text: s.oidcClientId);
     _oidcRedirectUri = TextEditingController(text: s.oidcRedirectUri);
     _languageCode = s.languageCode;
+    _swipeNavigation = s.swipeNavigation;
   }
 
   @override
@@ -76,6 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       oidcRedirectUri: _oidcRedirectUri.text.trim(),
       oidcScopes: existing.oidcScopes,
       languageCode: _languageCode,
+      swipeNavigation: _swipeNavigation,
     );
   }
 
@@ -266,6 +269,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 DropdownMenuItem(value: 'de', child: Text(l10n.languageGerman)),
               ],
               onChanged: (v) => setState(() => _languageCode = v ?? ''),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.swipe),
+              title: Text(l10n.swipeNavigation),
+              subtitle: Text(l10n.swipeNavigationHint),
+              value: _swipeNavigation,
+              onChanged: (v) => setState(() => _swipeNavigation = v),
             ),
             const SizedBox(height: 24),
             OutlinedButton.icon(

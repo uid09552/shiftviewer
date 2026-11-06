@@ -354,46 +354,57 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Makes a sideways swipe step the visible range by one day, week or month
+  /// (left = forward, right = back), unless turned off in the settings.
+  Widget _swipeable(Widget child) {
+    if (!context.watch<SettingsController>().settings.swipeNavigation) {
+      return child;
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v.abs() < _swipeMinVelocity) return;
+        _step(v < 0 ? 1 : -1);
+      },
+      child: child,
+    );
+  }
+
   /// The single view the bottom bar currently points at.
   Widget _viewBody(BuildContext context, ShiftDataController data) {
     switch (_view) {
       case HomeView.month:
-        return _withLegend(
-          data,
-          MonthView(
-            visibleMonth: _anchor,
-            selectedDay: _selectedDay,
-            data: data,
-            onDaySelected: _selectDay,
-            onDaysPainted: (days) => _editWishes(days, data),
+        return _swipeable(
+          _withLegend(
+            data,
+            MonthView(
+              visibleMonth: _anchor,
+              selectedDay: _selectedDay,
+              data: data,
+              onDaySelected: _selectDay,
+              onDaysPainted: (days) => _editWishes(days, data),
+            ),
           ),
         );
       case HomeView.week:
-        return _withLegend(
-          data,
-          WeekView(
-            visibleWeek: _anchor,
-            selectedDay: _selectedDay,
-            data: data,
-            onDaySelected: _selectDay,
-            onDaysPainted: (days) => _editWishes(days, data),
+        return _swipeable(
+          _withLegend(
+            data,
+            WeekView(
+              visibleWeek: _anchor,
+              selectedDay: _selectedDay,
+              data: data,
+              onDaySelected: _selectDay,
+              onDaysPainted: (days) => _editWishes(days, data),
+            ),
           ),
         );
       case HomeView.day:
         return LayoutBuilder(
           builder: (context, constraints) {
             _paneArea = constraints.maxHeight;
-            // Swiping sideways steps the date: left for the next day, right for
-            // the previous one.
-            return GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onHorizontalDragEnd: (details) {
-                final v = details.primaryVelocity ?? 0;
-                if (v.abs() < _swipeMinVelocity) return;
-                _step(v < 0 ? 1 : -1);
-              },
-              child: _dayPanes(context, data, constraints.maxHeight),
-            );
+            return _swipeable(_dayPanes(context, data, constraints.maxHeight));
           },
         );
       case HomeView.wishes:

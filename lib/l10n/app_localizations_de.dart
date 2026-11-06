@@ -464,6 +464,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get languageGerman => 'Deutsch';
 
   @override
+  String get swipeNavigation => 'Wischen zum Datumswechsel';
+
+  @override
+  String get swipeNavigationHint =>
+      'In der Tages-, Wochen- und Monatsansicht nach links oder rechts wischen, um zum nächsten oder vorherigen Tag, zur nächsten oder vorherigen Woche bzw. zum nächsten oder vorherigen Monat zu wechseln.';
+
+  @override
   String get shiftInsights => 'Dienstdetails';
 
   @override

@@ -752,6 +752,18 @@ abstract class AppLocalizations {
   /// **'German'**
   String get languageGerman;
 
+  /// No description provided for @swipeNavigation.
+  ///
+  /// In en, this message translates to:
+  /// **'Swipe to change date'**
+  String get swipeNavigation;
+
+  /// No description provided for @swipeNavigationHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Swipe left or right in the day, week and month views to move to the next or previous day, week or month.'**
+  String get swipeNavigationHint;
+
   /// No description provided for @shiftInsights.
   ///
   /// In en, this message translates to:
