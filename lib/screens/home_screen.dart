@@ -23,7 +23,7 @@ import 'settings_screen.dart';
 
 /// The views the bottom bar switches between. Exactly one fills the body at a
 /// time — the panes are gone, so each view gets the whole screen.
-enum HomeView { month, week, day, wishes }
+enum HomeView { day, week, month, wishes }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -52,6 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Height available to the day view's two panes, captured during layout so
   /// the drag handler can clamp against it.
   double _paneArea = 0;
+
+  /// Fling speed (logical px/s) that counts as a day-changing swipe.
+  static const double _swipeMinVelocity = 300;
 
   static const double _minSummary = 56;
   static const double _minList = 120;
@@ -325,9 +328,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (i) => _switchView(HomeView.values[i]),
         destinations: [
           NavigationDestination(
-            icon: const Icon(Icons.calendar_month_outlined),
-            selectedIcon: const Icon(Icons.calendar_month),
-            label: l10n.navMonth,
+            icon: const Icon(Icons.event_note_outlined),
+            selectedIcon: const Icon(Icons.event_note),
+            label: l10n.navDay,
           ),
           NavigationDestination(
             icon: const Icon(Icons.calendar_view_week_outlined),
@@ -335,9 +338,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: l10n.navWeek,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.event_note_outlined),
-            selectedIcon: const Icon(Icons.event_note),
-            label: l10n.navDay,
+            icon: const Icon(Icons.calendar_month_outlined),
+            selectedIcon: const Icon(Icons.calendar_month),
+            label: l10n.navMonth,
           ),
           NavigationDestination(
             icon: const Icon(Icons.star_border_rounded),
@@ -378,7 +381,17 @@ class _HomeScreenState extends State<HomeScreen> {
         return LayoutBuilder(
           builder: (context, constraints) {
             _paneArea = constraints.maxHeight;
-            return _dayPanes(context, data, constraints.maxHeight);
+            // Swiping sideways steps the date: left for the next day, right for
+            // the previous one.
+            return GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragEnd: (details) {
+                final v = details.primaryVelocity ?? 0;
+                if (v.abs() < _swipeMinVelocity) return;
+                _step(v < 0 ? 1 : -1);
+              },
+              child: _dayPanes(context, data, constraints.maxHeight),
+            );
           },
         );
       case HomeView.wishes:
