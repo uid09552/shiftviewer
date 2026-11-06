@@ -12,6 +12,10 @@ class ResizablePane extends StatefulWidget {
   /// parent gives it (e.g. wrapped in an [Expanded]).
   final double? height;
 
+  /// With a null [height], caps a pane that otherwise sizes itself to its
+  /// content. Without it a null [height] means "fill the parent".
+  final double? maxHeight;
+
   final Widget child;
 
   /// Signed height delta for this pane, in logical pixels. Null hides the
@@ -31,6 +35,7 @@ class ResizablePane extends StatefulWidget {
     required this.tooltip,
     this.onResize,
     this.height,
+    this.maxHeight,
     this.onReset,
   });
 
@@ -47,6 +52,20 @@ class _ResizablePaneState extends State<ResizablePane> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.height == null && widget.maxHeight != null) {
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: widget.maxHeight!),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Flexible(child: ClipRect(child: widget.child)),
+            if (widget.onResize != null) _handleBar(context),
+          ],
+        ),
+      );
+    }
+
     // The child is clipped so a pane dragged smaller than its content never
     // paints over its neighbours.
     final column = Column(
