@@ -53,6 +53,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// the drag handler can clamp against it.
   double _paneArea = 0;
 
+  /// Fling speed (logical px/s) that counts as a day-changing swipe.
+  static const double _swipeMinVelocity = 300;
+
   static const double _minSummary = 56;
   static const double _minList = 120;
   static const double _defaultSummaryShare = 0.34;
@@ -378,7 +381,17 @@ class _HomeScreenState extends State<HomeScreen> {
         return LayoutBuilder(
           builder: (context, constraints) {
             _paneArea = constraints.maxHeight;
-            return _dayPanes(context, data, constraints.maxHeight);
+            // Swiping sideways steps the date: left for the next day, right for
+            // the previous one.
+            return GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragEnd: (details) {
+                final v = details.primaryVelocity ?? 0;
+                if (v.abs() < _swipeMinVelocity) return;
+                _step(v < 0 ? 1 : -1);
+              },
+              child: _dayPanes(context, data, constraints.maxHeight),
+            );
           },
         );
       case HomeView.wishes:
