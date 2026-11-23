@@ -272,6 +272,19 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
+  String wishBatchLost(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          'Die bisherigen Wünsche an $count Tagen konnten nicht wiederhergestellt werden',
+      one:
+          'Der bisherige Wunsch an 1 Tag konnte nicht wiederhergestellt werden',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get wishPlannerHint =>
       'Tippe auf einen Tag für einen Dienstwunsch · gedrückt halten und ziehen, um mehrere Tage auf einmal zu planen.';
 

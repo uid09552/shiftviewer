@@ -176,6 +176,7 @@ class _ShiftWishSheetState extends State<_ShiftWishSheet> {
       if (result.skipped > 0) l10n.wishBatchSkipped(result.skipped),
       if (result.blocked > 0) l10n.wishBatchBlocked(result.blocked),
       if (result.failure != null) failureText(l10n, result.failure!),
+      if (result.lost > 0) l10n.wishBatchLost(result.lost),
     ];
     return parts.join(' · ');
   }

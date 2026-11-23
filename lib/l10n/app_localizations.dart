@@ -470,6 +470,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 day outside the wish window} other{{count} days outside the wish window}}'**
   String wishBatchBlocked(int count);
 
+  /// A replaced wish was withdrawn, the new wish was refused, and putting the earlier one back failed too: those days now have no wish.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{The earlier wish on 1 day could not be put back} other{The earlier wishes on {count} days could not be put back}}'**
+  String wishBatchLost(int count);
+
   /// No description provided for @wishPlannerHint.
   ///
   /// In en, this message translates to:

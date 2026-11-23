@@ -36,6 +36,11 @@ class _RosterScreenState extends State<RosterScreen>
   bool _loading = true;
   Object? _error;
 
+  /// Counts [_loadWeek] calls, so a week that answers after the user has
+  /// already stepped on is dropped instead of being shown under the newer
+  /// week's dates — where a tap would edit the wrong day.
+  int _weekGeneration = 0;
+
   static DateTime _monday(DateTime d) =>
       dateKey(d.subtract(Duration(days: d.weekday - 1)));
 
@@ -74,7 +79,11 @@ class _RosterScreenState extends State<RosterScreen>
     }
   }
 
-  Future<void> _loadWeek() async {
+  /// Loads the plans, wishes and closures of the week at [_weekStart].
+  /// Returns false when a newer load overtook this one and its answers were
+  /// dropped.
+  Future<bool> _loadWeek() async {
+    final generation = ++_weekGeneration;
     final from = _weekStart;
     final to = _weekStart.add(const Duration(days: 6));
     final r = await Future.wait([
@@ -84,7 +93,7 @@ class _RosterScreenState extends State<RosterScreen>
         (_) => <WorkstationClosure>[],
       ),
     ]);
-    if (!mounted) return;
+    if (!mounted || generation != _weekGeneration) return false;
     setState(() {
       _plans
         ..clear()
@@ -96,6 +105,7 @@ class _RosterScreenState extends State<RosterScreen>
             .map((w) => MapEntry(_key(w.employeeId, w.date), w)));
       _closures = r[2] as List<WorkstationClosure>;
     });
+    return true;
   }
 
   Future<void> _step(int weeks) async {
@@ -103,12 +113,17 @@ class _RosterScreenState extends State<RosterScreen>
       _weekStart = _weekStart.add(Duration(days: 7 * weeks));
       _loading = true;
     });
+    final generation = _weekGeneration + 1;
     try {
       await _loadWeek();
     } catch (e) {
-      if (mounted) showAdminError(context, e);
+      // An overtaken week's failure is not the week on screen.
+      if (mounted && generation == _weekGeneration) showAdminError(context, e);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      // The load that overtook this one owns the spinner now.
+      if (mounted && generation == _weekGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -458,15 +473,17 @@ class _CellEditorState extends State<_CellEditor> {
     final api = widget.api;
     final p = widget.plan;
     final working = _absence == null;
-    // Switching between a working day and an absence changes what the row
-    // is, so it is replaced rather than patched.
     if (p != null && p.isPresent == working) {
       await api.updatePlan(p.id, working
           ? {'shift_id': _shiftId, 'workstation_id': _workstationId}
           : {'is_present': false, 'absence_type': _absence});
       return;
     }
-    if (p != null) await api.deletePlan(p.id);
+    // Switching between a working day and an absence changes what the row
+    // is, so every column is rewritten. The create is an upsert on
+    // (employee, date) and replaces the old entry in one guarded write —
+    // deleting it first would leave the day empty if the create then failed.
+    // (A PUT cannot do this: it cannot clear `absence_type`.)
     await api.createPlan(
       widget.employee.id,
       widget.day,

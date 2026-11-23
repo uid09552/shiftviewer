@@ -269,6 +269,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String wishBatchLost(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'The earlier wishes on $count days could not be put back',
+      one: 'The earlier wish on 1 day could not be put back',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get wishPlannerHint =>
       'Tap a day to wish for a shift · long press and drag across days to plan several at once.';
 

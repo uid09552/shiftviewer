@@ -32,6 +32,24 @@ final _earlyShift = {
   ],
 };
 
+/// A late shift running every day, to replace early wishes with.
+final _lateShift = {
+  'id': 'late',
+  'name': 'Late',
+  'short_name': 'L',
+  'color': '#0000FF',
+  'order': 2,
+  'weekday_times': [
+    for (int weekday = 0; weekday < 7; weekday++)
+      {
+        'weekday': weekday,
+        'start_time': '14:00',
+        'end_time': '22:00',
+        'min_employees': 1,
+      },
+  ],
+};
+
 /// A stand-in server holding wishes in memory, counting what it was asked to do.
 class _FakeApi {
   final wishes = <String, Map<String, dynamic>>{};
@@ -48,13 +66,21 @@ class _FakeApi {
   /// Set to fail every write from that point on.
   int? failWritesWith;
 
+  /// Wishes for these shifts are refused with 422, as the server does for a
+  /// shift the employee may not work.
+  final refusedShifts = <String>{};
+
+  /// Set to refuse every POST from that point on — including the one that
+  /// would put a replaced wish back.
+  bool refuseAllPosts = false;
+
   http.Client client() => MockClient((request) async {
         final path = request.url.path.replaceFirst('/api/v1', '');
 
         if (request.method == 'GET') {
           switch (path) {
             case '/shifts':
-              return _json([_earlyShift]);
+              return _json([_earlyShift, _lateShift]);
             case '/employees':
               return _json([
                 {'id': 'e1', 'name': 'Ada', 'email': 'ada@example.test'}
@@ -77,6 +103,9 @@ class _FakeApi {
         if (request.method == 'POST' && path == '/shift-wishes') {
           posts++;
           final body = jsonDecode(request.body) as Map<String, dynamic>;
+          if (refuseAllPosts || refusedShifts.contains(body['shift_id'])) {
+            return _json({'error': 'refused'}, status: 422);
+          }
           final created = {'id': 'w${nextId++}', ...body};
           wishes[created['id'] as String] = created;
           return _json(created, status: 201);
@@ -223,5 +252,36 @@ void main() {
 
     expect(result.failure?.reason, FailureReason.noEmployeeSelected);
     expect(api.posts, 0);
+  });
+
+  test('a refused replacement puts the earlier wish back', () async {
+    final (data, api) = await _loaded();
+    final monday = _week.first;
+    await data.placeWishes([monday], 'early');
+    api.refusedShifts.add('late');
+
+    final result = await data.placeWishes([monday], 'late');
+
+    expect(result.applied, 0);
+    expect(result.failure?.statusCode, 422);
+    expect(result.lost, 0, reason: 'the early wish was restored');
+    expect(data.wishForDay(monday)?.shiftId, 'early');
+    expect(api.wishes.values.map((w) => w['shift_id']), ['early'],
+        reason: 'the server holds the early wish again');
+  });
+
+  test('a replacement that cannot be undone is reported as lost', () async {
+    final (data, api) = await _loaded();
+    final monday = _week.first;
+    await data.placeWishes([monday], 'early');
+    api.refuseAllPosts = true;
+
+    final result = await data.placeWishes([monday], 'late');
+
+    expect(result.failure?.statusCode, 422);
+    expect(result.lost, 1);
+    expect(data.wishForDay(monday), isNull,
+        reason: 'the app shows what the server holds: no wish');
+    expect(api.wishes, isEmpty);
   });
 }

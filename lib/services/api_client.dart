@@ -180,6 +180,47 @@ class ShiftApiClient {
   Future<dynamic> getJson(String path, [Map<String, String>? query]) =>
       _get(path, query);
 
+  /// Page size for [getAllPages] unless the caller asks for another.
+  static const int defaultPageSize = 1000;
+
+  /// Upper bound on the pages [getAllPages] reads, so a server that ignores
+  /// `offset` and keeps answering full pages cannot keep the app looping.
+  static const int maxPages = 100;
+
+  /// GETs every page of a list endpoint that takes `limit`/`offset` and
+  /// answers with the envelope `{ data, total, limit, offset }`, and returns
+  /// the items of all pages in order.
+  ///
+  /// Reading stops at the first short or empty page, or once `total` items
+  /// are in. An endpoint that answers with a bare list (no envelope) has no
+  /// paging to follow, so its one answer is the whole list.
+  Future<List<dynamic>> getAllPages(
+    String path, {
+    Map<String, String>? query,
+    int pageSize = defaultPageSize,
+  }) async {
+    final items = <dynamic>[];
+    for (var page = 0; page < maxPages; page++) {
+      final data = await _get(path, {
+        ...?query,
+        'limit': '$pageSize',
+        'offset': '${items.length}',
+      });
+      if (data is! Map<String, dynamic>) {
+        items.addAll(_asList(data));
+        return items;
+      }
+      final batch = _asList(data);
+      items.addAll(batch);
+      final total = (data['total'] as num?)?.toInt();
+      if (batch.length < pageSize || (total != null && items.length >= total)) {
+        return items;
+      }
+    }
+    debugPrint('[api] GET $path: stopped after $maxPages pages');
+    return items;
+  }
+
   /// POST/PUT/PATCH/DELETE [path] with an optional JSON body and query.
   Future<dynamic> sendJson(
     String method,
@@ -254,10 +295,9 @@ class ShiftApiClient {
     return list.map((e) => Shift.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// First page of employees.
-  Future<List<Employee>> listEmployees({int limit = 100}) async {
-    final data = await _get('/employees', {'limit': '$limit'});
-    final list = _asList(data);
+  /// Every employee, read page by page.
+  Future<List<Employee>> listEmployees({int pageSize = defaultPageSize}) async {
+    final list = await getAllPages('/employees', pageSize: pageSize);
     return list
         .map((e) => Employee.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -291,20 +331,21 @@ class ShiftApiClient {
         .toList();
   }
 
-  /// Confirmed shift plans across all employees in `[from, to]`.
+  /// Confirmed shift plans across all employees in `[from, to]`, every page
+  /// of them: a six-week month grid of a large ward runs to thousands.
   Future<List<ConfirmedShiftPlan>> confirmedShiftPlans(
     DateTime from,
-    DateTime to,
-  ) async {
-    final data = await _get('/confirmed-shift-plans', {
-      'from_date': _dateFmt.format(from),
-      'to_date': _dateFmt.format(to),
-      'limit': '500',
-    });
-    // This endpoint returns a paginated envelope: { data, total, limit, offset }.
-    final list = data is Map<String, dynamic>
-        ? _asList(data['data'])
-        : _asList(data);
+    DateTime to, {
+    int pageSize = defaultPageSize,
+  }) async {
+    final list = await getAllPages(
+      '/confirmed-shift-plans',
+      query: {
+        'from_date': _dateFmt.format(from),
+        'to_date': _dateFmt.format(to),
+      },
+      pageSize: pageSize,
+    );
     return list
         .map((e) => ConfirmedShiftPlan.fromJson(e as Map<String, dynamic>))
         .toList();

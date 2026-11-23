@@ -63,6 +63,11 @@ class WishBatchResult {
   /// Days left alone because they fall outside the tenant's wish window.
   final int blocked;
 
+  /// Days whose earlier wish was withdrawn to make room for the new one, and
+  /// then neither the new wish could be placed nor the earlier one put back.
+  /// Those days now carry no wish at all, which the user has to be told.
+  final int lost;
+
   /// What stopped the run, when something did. Days handled before it keep
   /// their change — the count says how many.
   final DataFailure? failure;
@@ -71,6 +76,7 @@ class WishBatchResult {
     this.applied = 0,
     this.skipped = 0,
     this.blocked = 0,
+    this.lost = 0,
     this.failure,
   });
 }
@@ -99,6 +105,12 @@ class ShiftDataController extends ChangeNotifier {
 
   bool _loading = false;
   DataFailure? _error;
+
+  /// Counts [refresh] calls. Each call remembers its number and only applies
+  /// its answers while it is still the latest: stepping through months faster
+  /// than the server answers starts overlapping loads, and an older one that
+  /// finishes last must not paint its range over the newer one's.
+  int _refreshGeneration = 0;
   Map<String, Shift> _shiftsById = {};
   Map<String, Employee> _employeesById = {};
   Map<String, Workstation> _workstationsById = {};
@@ -260,6 +272,7 @@ class ShiftDataController extends ChangeNotifier {
     var applied = 0;
     var skipped = 0;
     var blocked = 0;
+    var lost = 0;
     DataFailure? failure;
     try {
       for (final raw in days) {
@@ -279,18 +292,27 @@ class ShiftDataController extends ChangeNotifier {
           applied++;
           continue;
         }
-        // Only one wish per employee and date is allowed, so drop the old one
-        // before asking for the new shift.
+        // Only one wish per employee and date is allowed and the API has no
+        // way to change one, so the old wish goes before the new one is asked
+        // for — and comes back if the new one is refused.
         if (existing != null) {
           await client.deleteShiftWish(existing.id);
           _forgetWish(existing);
         }
-        final created = await client.createShiftWish(
-          employeeId: employeeId,
-          shiftId: shiftId,
-          date: day,
-        );
-        _wishesByDate.putIfAbsent(dateKey(created.date), () => []).add(created);
+        final ShiftWish created;
+        try {
+          created = await client.createShiftWish(
+            employeeId: employeeId,
+            shiftId: shiftId,
+            date: day,
+          );
+        } catch (_) {
+          if (existing != null && !await _restoreWish(client, existing)) {
+            lost++;
+          }
+          rethrow;
+        }
+        _remember(created);
         applied++;
       }
     } on ApiException catch (e) {
@@ -307,8 +329,30 @@ class ShiftDataController extends ChangeNotifier {
       applied: applied,
       skipped: skipped,
       blocked: blocked,
+      lost: lost,
       failure: failure,
     );
+  }
+
+  /// Places [wish] again after its replacement was refused. Returns whether
+  /// the day carries it again; a failure here is not reported on its own —
+  /// the refusal that caused it is what the user sees, plus the lost count.
+  Future<bool> _restoreWish(ShiftApiClient client, ShiftWish wish) async {
+    try {
+      _remember(await client.createShiftWish(
+        employeeId: wish.employeeId,
+        shiftId: wish.shiftId,
+        date: wish.date,
+      ));
+      return true;
+    } catch (e) {
+      debugPrint('[data] could not restore wish ${wish.id}: $e');
+      return false;
+    }
+  }
+
+  void _remember(ShiftWish wish) {
+    _wishesByDate.putIfAbsent(dateKey(wish.date), () => []).add(wish);
   }
 
   /// Withdraws the selected employee's wishes on every day in [days]. Days
@@ -368,7 +412,11 @@ class ShiftDataController extends ChangeNotifier {
 
   /// Fetches shifts, employees, workstations and all confirmed plans covering
   /// [from]..[to].
+  ///
+  /// A call overtaken by a newer one before it finishes drops its results, so
+  /// what is shown always belongs to the range asked for last.
   Future<void> refresh(DateTime from, DateTime to) async {
+    final generation = ++_refreshGeneration;
     if (!_settings.isConfigured) {
       _error = const DataFailure(FailureReason.notConfigured);
       _plansByDate = {};
@@ -398,6 +446,7 @@ class ShiftDataController extends ChangeNotifier {
       final workstations = results[2] as List<Workstation>;
       final plans = results[3] as List<ConfirmedShiftPlan>;
       final wishes = results[4] as List<ShiftWish>;
+      if (generation != _refreshGeneration) return;
       _wishSettings = results[5] as WishSettings;
       _holidays = results[6] as HolidayCalendar;
 
@@ -427,11 +476,14 @@ class ShiftDataController extends ChangeNotifier {
         _selectedEmployeeId = null;
       }
     } catch (e) {
-      _error = DataFailure.from(e);
+      if (generation == _refreshGeneration) _error = DataFailure.from(e);
     } finally {
       client.close();
-      _loading = false;
-      notifyListeners();
+      // A superseded load leaves the spinner to the one still running.
+      if (generation == _refreshGeneration) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
