@@ -63,8 +63,19 @@ final _workstationJson = {
   'min_employees': 2,
 };
 
+/// Every request the fake backend answered since the last [_pump].
+final _requests = <http.Request>[];
+
 Object? _route(http.Request req) {
   final p = req.url.path.replaceFirst('/api/v1', '');
+  if (req.method == 'POST' && p.endsWith('/confirmed-shift-plans')) {
+    // The create is an upsert; echo the row back as the server does.
+    return {
+      'id': 'p-new',
+      'employee_id': p.split('/')[2],
+      ...jsonDecode(req.body) as Map<String, dynamic>,
+    };
+  }
   if (req.method != 'GET') return {'id': 'x'};
   return switch (p) {
     '/employees' => {'data': [_employeeJson], 'total': 1},
@@ -209,6 +220,7 @@ class _Settings extends SettingsController {
 }
 
 Future<void> _pump(WidgetTester tester, Widget screen) async {
+  _requests.clear();
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -232,11 +244,14 @@ Future<void> _pump(WidgetTester tester, Widget screen) async {
       ChangeNotifierProvider(
         create: (_) => ShiftDataController(
           settings.settings,
-          httpClientFactory: () => MockClient((req) async => http.Response(
-                jsonEncode(_route(req)),
-                200,
-                headers: {'content-type': 'application/json; charset=utf-8'},
-              )),
+          httpClientFactory: () => MockClient((req) async {
+            _requests.add(req);
+            return http.Response(
+              jsonEncode(_route(req)),
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          }),
         ),
       ),
       ChangeNotifierProvider<AuthController>.value(value: auth),
@@ -274,6 +289,28 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Gewünscht: Early'), findsOneWidget);
     expect(find.text('Tag leeren'), findsOneWidget);
+  });
+
+  testWidgets('turning a working day into an absence replaces it in one write',
+      (t) async {
+    await _pump(t, const RosterScreen());
+    await t.tap(find.text('F').first);
+    await t.pumpAndSettle();
+    await t.tap(find.text('Krank'));
+    await t.pumpAndSettle();
+    _requests.clear();
+    await t.tap(find.text('Speichern'));
+    await t.pumpAndSettle();
+
+    final writes = _requests.where((r) => r.method != 'GET').toList();
+    expect(writes.map((r) => '${r.method} ${r.url.path}'),
+        ['POST /api/v1/employees/e1/confirmed-shift-plans'],
+        reason: 'no DELETE first: a failed create would leave the day empty');
+    final body = jsonDecode(writes.single.body) as Map<String, dynamic>;
+    expect(body['is_present'], isFalse);
+    expect(body['absence_type'], 'sick');
+    expect(body.containsKey('shift_id'), isFalse);
+    expect(find.text('Speichern'), findsNothing, reason: 'the editor closed');
   });
 
   testWidgets('employee list and editor with leave groups', (t) async {

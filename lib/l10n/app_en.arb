@@ -182,6 +182,13 @@
       "count": { "type": "int" }
     }
   },
+  "wishBatchLost": "{count, plural, =1{The earlier wish on 1 day could not be put back} other{The earlier wishes on {count} days could not be put back}}",
+  "@wishBatchLost": {
+    "description": "A replaced wish was withdrawn, the new wish was refused, and putting the earlier one back failed too: those days now have no wish.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
 
   "wishPlannerHint": "Tap a day to wish for a shift · long press and drag across days to plan several at once.",
   "wishPlannerEmpty": "No wishes in this month yet",

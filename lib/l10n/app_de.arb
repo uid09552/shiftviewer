@@ -159,6 +159,12 @@
       "count": { "type": "int" }
     }
   },
+  "wishBatchLost": "{count, plural, =1{Der bisherige Wunsch an 1 Tag konnte nicht wiederhergestellt werden} other{Die bisherigen Wünsche an {count} Tagen konnten nicht wiederhergestellt werden}}",
+  "@wishBatchLost": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
 
   "wishPlannerHint": "Tippe auf einen Tag für einen Dienstwunsch · gedrückt halten und ziehen, um mehrere Tage auf einmal zu planen.",
   "wishPlannerEmpty": "Noch keine Wünsche in diesem Monat",

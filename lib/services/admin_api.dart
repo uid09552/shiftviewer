@@ -35,7 +35,7 @@ class AdminApi {
   // ── Employees ───────────────────────────────────────────────────────────
 
   Future<List<Employee>> employees() async => _decode(
-    await client.getJson('/employees', {'limit': '1000', 'offset': '0'}),
+    await client.getAllPages('/employees'),
     Employee.fromJson,
   );
 
@@ -117,26 +117,14 @@ class AdminApi {
 
   // ── Confirmed plans (roster editing) ────────────────────────────────────
 
-  Future<List<ConfirmedShiftPlan>> plans(DateTime from, DateTime to) async {
-    final out = <ConfirmedShiftPlan>[];
-    const pageSize = 1000;
-    for (var offset = 0; ; offset += pageSize) {
-      final data = await client.getJson('/confirmed-shift-plans', {
-        'from_date': day(from),
-        'to_date': day(to),
-        'limit': '$pageSize',
-        'offset': '$offset',
-      });
-      final page = _decode(data, ConfirmedShiftPlan.fromJson);
-      out.addAll(page);
-      final total = data is Map<String, dynamic>
-          ? (data['total'] as num?)?.toInt()
-          : null;
-      if (page.length < pageSize || total == null || out.length >= total) {
-        return out;
-      }
-    }
-  }
+  Future<List<ConfirmedShiftPlan>> plans(DateTime from, DateTime to) async =>
+      _decode(
+        await client.getAllPages(
+          '/confirmed-shift-plans',
+          query: {'from_date': day(from), 'to_date': day(to)},
+        ),
+        ConfirmedShiftPlan.fromJson,
+      );
 
   Future<List<ConfirmedShiftPlan>> employeePlans(
     String employeeId, {
@@ -151,6 +139,10 @@ class AdminApi {
   );
 
   /// A working day ([shiftId] set) or an absence ([absenceType] set).
+  ///
+  /// The server upserts on (employee, date): an entry already on that day is
+  /// replaced, every column included, in one guarded write. That makes this
+  /// the way to turn a working day into an absence or back — no delete first.
   Future<ConfirmedShiftPlan> createPlan(
     String employeeId,
     DateTime date, {

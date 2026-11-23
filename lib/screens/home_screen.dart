@@ -9,6 +9,7 @@ import '../l10n/l10n_helpers.dart';
 import '../models/models.dart';
 import '../services/app_settings.dart';
 import '../services/auth_service.dart';
+import '../services/iso_week.dart';
 import '../services/shift_data_controller.dart';
 import '../widgets/calendar_export_sheet.dart';
 import '../widgets/day_detail.dart';
@@ -211,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final end = start.add(const Duration(days: 6));
         return start.month == end.month
             ? l10n.weekTitle(DateFormat.MMMM(locale).format(start),
-                '${start.year}', _weekOfYear(start))
+                '${start.year}', isoWeekNumber(start))
             : l10n.weekSpanTitle(DateFormat.MMM(locale).format(start),
                 DateFormat.MMM(locale).format(end), '${end.year}');
       case HomeView.day:
@@ -220,12 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
       case HomeView.wishes:
         return DateFormat.yMMMM(locale).format(_anchor);
     }
-  }
-
-  int _weekOfYear(DateTime date) {
-    final firstDay = DateTime(date.year, 1, 1);
-    final days = date.difference(firstDay).inDays;
-    return ((days + firstDay.weekday - 1) / 7).floor() + 1;
   }
 
   @override
