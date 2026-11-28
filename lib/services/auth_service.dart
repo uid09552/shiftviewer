@@ -186,6 +186,11 @@ class AuthController extends ChangeNotifier {
       _fail('OIDC is not configured. Open settings to set the issuer/client.');
       return;
     }
+    final insecure = _insecureIssuerProblem();
+    if (insecure != null) {
+      _fail(insecure);
+      return;
+    }
     if (kIsWeb) {
       await _webLogin();
     } else if (_isNative) {
@@ -318,7 +323,6 @@ class AuthController extends ChangeNotifier {
           _settings.oidcRedirectUri,
           issuer: _settings.oidcIssuer,
           scopes: _settings.scopeList,
-          // Dev backend is served over plain HTTP (e.g. http://10.0.2.2).
           allowInsecureConnections: false,
         ),
       );
@@ -345,8 +349,19 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Release builds only talk to an identity provider over HTTPS: tokens
+  /// must never cross a plain-HTTP link. Debug builds may use a local one.
+  String? _insecureIssuerProblem() {
+    if (!kReleaseMode) return null;
+    final issuer = Uri.tryParse(_settings.oidcIssuer.trim());
+    if (issuer != null && issuer.scheme == 'https') return null;
+    return 'The identity provider must use HTTPS. Check the issuer in settings.';
+  }
+
   Future<bool> _nativeRefresh() async {
     try {
+      final insecure = _insecureIssuerProblem();
+      if (insecure != null) throw StateError(insecure);
       final result = await _appAuth.token(
         TokenRequest(
           _settings.oidcClientId,
@@ -355,7 +370,7 @@ class AuthController extends ChangeNotifier {
           refreshToken: _refreshToken,
           grantType: 'refresh_token',
           scopes: _settings.scopeList,
-          allowInsecureConnections: true,
+          allowInsecureConnections: false,
         ),
       );
       _applyTokenResponse(
