@@ -441,13 +441,15 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen>
     final (kind, range) = result;
     final id = _employee!.id;
     setState(() => _loading = true);
+    final reasons = ChangeReasonPrompt(context);
     try {
       for (final day in daysBetween(range.start, range.end)) {
         if (kind == LeaveKind.unavailable) {
           await api.createUnavailability(id, day);
         } else {
-          await api.createPlan(id, day,
-              absenceType: kind == LeaveKind.sick ? 'sick' : 'day_off');
+          await reasons.run((reason) => api.createPlan(id, day,
+              absenceType: kind == LeaveKind.sick ? 'sick' : 'day_off',
+              changeReason: reason));
         }
       }
     } catch (e) {
@@ -468,12 +470,15 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen>
     );
     if (!ok) return;
     setState(() => _loading = true);
+    final reasons = ChangeReasonPrompt(context);
     try {
       for (final d in g.days) {
         if (d.kind == LeaveKind.unavailable) {
           await api.deleteUnavailability(d.id);
         } else {
-          await api.deletePlan(d.id);
+          await reasons.run(
+            (reason) => api.deletePlan(d.id, changeReason: reason),
+          );
         }
       }
     } catch (e) {

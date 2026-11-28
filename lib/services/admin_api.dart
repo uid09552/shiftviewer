@@ -143,12 +143,16 @@ class AdminApi {
   /// The server upserts on (employee, date): an entry already on that day is
   /// replaced, every column included, in one guarded write. That makes this
   /// the way to turn a working day into an absence or back — no delete first.
+  ///
+  /// Every roster write takes an optional [changeReason], which the server
+  /// demands (`428`) for published days in the freeze window and locked months.
   Future<ConfirmedShiftPlan> createPlan(
     String employeeId,
     DateTime date, {
     String? shiftId,
     String? workstationId,
     String? absenceType,
+    String? changeReason,
   }) async => ConfirmedShiftPlan.fromJson(
     await client.sendJson('POST', '/employees/$employeeId/confirmed-shift-plans', {
       'date': day(date),
@@ -157,18 +161,38 @@ class AdminApi {
       'is_present': absenceType == null,
       'absence_type': ?absenceType,
       'creation_type': 'manual',
-    }),
+    }, null, changeReason),
   );
 
   Future<ConfirmedShiftPlan> updatePlan(
     String planId,
-    Map<String, dynamic> changes,
-  ) async => ConfirmedShiftPlan.fromJson(
-    await client.sendJson('PUT', '/confirmed-shift-plans/$planId', changes),
+    Map<String, dynamic> changes, {
+    String? changeReason,
+  }) async => ConfirmedShiftPlan.fromJson(
+    await client.sendJson(
+      'PUT',
+      '/confirmed-shift-plans/$planId',
+      changes,
+      null,
+      changeReason,
+    ),
   );
 
-  Future<void> deletePlan(String planId) =>
-      client.sendJson('DELETE', '/confirmed-shift-plans/$planId');
+  Future<void> deletePlan(String planId, {String? changeReason}) =>
+      client.sendJson(
+        'DELETE',
+        '/confirmed-shift-plans/$planId',
+        null,
+        null,
+        changeReason,
+      );
+
+  /// Status of the roster months the backend tracks. Months it does not list
+  /// are still drafts.
+  Future<List<RosterMonth>> rosterMonths() async => [
+    for (final row in _list(await client.getJson('/roster-months')))
+      if (row is Map<String, dynamic>) ?RosterMonth.tryParse(row),
+  ];
 
   // ── Shifts ──────────────────────────────────────────────────────────────
 
@@ -368,6 +392,7 @@ class AdminApi {
     required int offsetStep,
     required bool replaceExisting,
     required bool dryRun,
+    String? changeReason,
   }) async => ApplyResult.fromJson(
     await client.sendJson('POST', '/rotation-patterns/$patternId/apply', {
       'employee_ids': employeeIds,
@@ -376,15 +401,20 @@ class AdminApi {
       'offset_step': offsetStep,
       'replace_existing': replaceExisting,
       'dry_run': dryRun,
-    }),
+    }, null, changeReason),
   );
 
-  Future<int> clearFixed(List<String> employeeIds, DateTime from, DateTime to) async {
+  Future<int> clearFixed(
+    List<String> employeeIds,
+    DateTime from,
+    DateTime to, {
+    String? changeReason,
+  }) async {
     final data = await client.sendJson('POST', '/shift-assignments/clear', {
       'employee_ids': employeeIds,
       'from_date': day(from),
       'to_date': day(to),
-    });
+    }, null, changeReason);
     return (data is Map ? (data['deleted'] as num?)?.toInt() : null) ?? 0;
   }
 

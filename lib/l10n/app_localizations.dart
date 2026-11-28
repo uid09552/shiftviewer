@@ -182,6 +182,12 @@ abstract class AppLocalizations {
   /// **'Refresh'**
   String get refresh;
 
+  /// When the roster data was last loaded successfully.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated {time}'**
+  String updatedAt(String time);
+
   /// No description provided for @settings.
   ///
   /// In en, this message translates to:
@@ -1243,6 +1249,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Roster'**
   String get admRoster;
+
+  /// No description provided for @admReasonTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason for change'**
+  String get admReasonTitle;
+
+  /// No description provided for @admReasonMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This part of the roster is published or locked. Say why you are changing it; the reason is recorded in the audit log.'**
+  String get admReasonMessage;
+
+  /// No description provided for @admReasonLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason'**
+  String get admReasonLabel;
+
+  /// No description provided for @admReasonConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply change'**
+  String get admReasonConfirm;
+
+  /// No description provided for @admMonthDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft'**
+  String get admMonthDraft;
+
+  /// No description provided for @admMonthPublished.
+  ///
+  /// In en, this message translates to:
+  /// **'Published'**
+  String get admMonthPublished;
+
+  /// No description provided for @admMonthLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Locked'**
+  String get admMonthLocked;
+
+  /// No description provided for @admMonthLockedError.
+  ///
+  /// In en, this message translates to:
+  /// **'This month is locked. Only an admin may change it, and a reason is required.'**
+  String get admMonthLockedError;
 
   /// No description provided for @admRosterHint.
   ///

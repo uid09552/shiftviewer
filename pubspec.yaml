@@ -51,6 +51,7 @@ dependencies:
   # Browser APIs (location / storage / history) for the web OIDC redirect flow.
   web: ^1.1.0
   flutter_appauth: ^12.0.2
+  flutter_secure_storage: ^11.2.0
   # Opens the Google Calendar app / site for a single shift, and hands the
   # generated .ics to the platform on web.
   url_launcher: ^6.3.2

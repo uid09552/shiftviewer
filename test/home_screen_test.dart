@@ -96,4 +96,16 @@ void main() {
     expect(find.text('Not configured. Open settings to set the API URL.'),
         findsOneWidget);
   });
+
+  testWidgets('pulling down on the day view asks for a reload', (tester) async {
+    await tester.pumpWidget(_host());
+    await tester.pump();
+
+    // An empty day is still a scrollable list, so the gesture is available.
+    expect(find.byType(RefreshIndicator), findsOneWidget);
+    await tester.fling(find.text('No shifts scheduled'), const Offset(0, 300), 1000);
+    await tester.pump();
+    expect(find.byType(RefreshProgressIndicator), findsOneWidget);
+    await tester.pumpAndSettle();
+  });
 }

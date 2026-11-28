@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Debug builds only: allow plain HTTP for a local backend/IdP
+         (e.g. http://10.0.2.2). The release config does not. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <!-- Trust preinstalled CAs -->
+            <certificates src="system" />
+            <!-- Additionally trust user-added CAs -->
+            <certificates src="user" />
+            <!-- Bundled Sectigo intermediate: portainer.mhmhkh.org serves only the
+                 leaf cert, so Android can't build the chain to the system root.
+                 Trusting the intermediate directly bridges it. Remove once the
+                 server serves the full chain (fullchain.pem). -->
+            <certificates src="@raw/sectigo_r36" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -104,6 +104,70 @@ void main() {
   });
 
   group('AdminApi', () {
+    test('a change reason travels URL-encoded in X-Change-Reason', () async {
+      late http.Request seen;
+      final api = _api((req) async {
+        seen = req;
+        return http.Response('', 204);
+      });
+
+      await api.deletePlan('p1', changeReason: 'Krankmeldung für Früh');
+
+      expect(
+        Uri.decodeComponent(seen.headers['X-Change-Reason']!),
+        'Krankmeldung für Früh',
+      );
+      expect(seen.headers['X-Change-Reason'], isNot(contains(' ')));
+    });
+
+    test('no reason means no header', () async {
+      late http.Request seen;
+      final api = _api((req) async {
+        seen = req;
+        return http.Response('', 204);
+      });
+
+      await api.deletePlan('p1');
+
+      expect(seen.headers.containsKey('X-Change-Reason'), isFalse);
+    });
+
+    test('428 is reported as a reason being required', () async {
+      final api = _api((req) async => http.Response(
+            jsonEncode({'error': 'reason_required'}),
+            428,
+            headers: {'content-type': 'application/json'},
+          ));
+
+      await expectLater(
+        api.deletePlan('p1'),
+        throwsA(isA<ApiException>().having((e) => e.reasonRequired, 'reasonRequired', isTrue)),
+      );
+    });
+
+    test('roster months are read with their status', () async {
+      final api = _api((req) async {
+        expect(req.url.path, '/api/v1/roster-months');
+        return http.Response(
+          jsonEncode([
+            {'month': '2026-06', 'status': 'published'},
+            {'year': 2026, 'month': 7, 'status': 'locked'},
+            {'month': 'nonsense', 'status': 'locked'},
+          ]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+
+      final months = await api.rosterMonths();
+
+      expect(months, hasLength(2));
+      expect(months[0].status, RosterMonthStatus.published);
+      expect((months[0].year, months[0].month), (2026, 6));
+      expect(months[1].status, RosterMonthStatus.locked);
+      expect((months[1].year, months[1].month), (2026, 7));
+    });
+
     test('an absence is created as a manual, not-present plan', () async {
       late Map<String, dynamic> sent;
       late Uri url;

@@ -51,6 +51,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refresh => 'Refresh';
 
   @override
+  String updatedAt(String time) {
+    return 'Updated $time';
+  }
+
+  @override
   String get settings => 'Settings';
 
   @override
@@ -785,6 +790,32 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get admRoster => 'Roster';
+
+  @override
+  String get admReasonTitle => 'Reason for change';
+
+  @override
+  String get admReasonMessage =>
+      'This part of the roster is published or locked. Say why you are changing it; the reason is recorded in the audit log.';
+
+  @override
+  String get admReasonLabel => 'Reason';
+
+  @override
+  String get admReasonConfirm => 'Apply change';
+
+  @override
+  String get admMonthDraft => 'Draft';
+
+  @override
+  String get admMonthPublished => 'Published';
+
+  @override
+  String get admMonthLocked => 'Locked';
+
+  @override
+  String get admMonthLockedError =>
+      'This month is locked. Only an admin may change it, and a reason is required.';
 
   @override
   String get admRosterHint => 'Edit who works what, week by week';

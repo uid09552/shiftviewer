@@ -14,14 +14,32 @@ class ApiException implements Exception {
   final String message;
   final int? statusCode;
   ApiException(this.message, {this.statusCode});
+
+  /// The write needs an `X-Change-Reason` (`428 reason_required`): it touches
+  /// a published day inside the freeze window or a locked month.
+  bool get reasonRequired => statusCode == 428;
   @override
   String toString() => 'ApiException($statusCode): $message';
+}
+
+/// Thrown by an [AccessTokenProvider] when a signed-in session exists but no
+/// usable access token can be had right now — the renewal failed for a
+/// transient reason (offline, server error). It is a connectivity problem, not
+/// a sign-out: the request must fail locally instead of going out anonymous or
+/// under some other stored credential.
+class TokenUnavailableException implements Exception {
+  const TokenUnavailableException();
+  @override
+  String toString() => 'the sign-in could not be renewed just now '
+      '(no connection to the identity provider?)';
 }
 
 /// Supplies a currently-valid OIDC access token, renewing it from the refresh
 /// token when the current one has run out. `forceRefresh` asks for a renewal
 /// even when the cached token still looks valid, which is what the client does
-/// after a 401. Returns null when the session cannot be continued.
+/// after a 401. Returns null when there is no session (never signed in, or it
+/// has ended), and throws [TokenUnavailableException] when a session exists but
+/// its token cannot be renewed at the moment.
 typedef AccessTokenProvider = Future<String?> Function({bool forceRefresh});
 
 /// Thin REST client for the Hospital Shift Management API.
@@ -142,6 +160,7 @@ class ShiftApiClient {
     String path, [
     Map<String, dynamic>? body,
     Map<String, String>? query,
+    String? changeReason,
   ]) async {
     final http.Response res;
     try {
@@ -149,6 +168,12 @@ class ShiftApiClient {
       res = await _withAuthRetry((headers) async {
         final request = http.Request(method, _uri(path, query))
           ..headers.addAll(headers);
+        // The roster lifecycle asks for a reason on edits to published or
+        // locked months. It travels URL-encoded: header values must be ASCII.
+        if (changeReason != null && changeReason.trim().isNotEmpty) {
+          request.headers['X-Change-Reason'] =
+              Uri.encodeComponent(changeReason.trim());
+        }
         if (body != null) {
           request.headers['Content-Type'] = 'application/json';
           request.body = jsonEncode(body);
@@ -222,12 +247,16 @@ class ShiftApiClient {
   }
 
   /// POST/PUT/PATCH/DELETE [path] with an optional JSON body and query.
+  ///
+  /// [changeReason] is sent as `X-Change-Reason`; roster writes in a published
+  /// or locked month answer `428` without it (see [ApiException.reasonRequired]).
   Future<dynamic> sendJson(
     String method,
     String path, [
     Map<String, dynamic>? body,
     Map<String, String>? query,
-  ]) => _send(method, path, body, query);
+    String? changeReason,
+  ]) => _send(method, path, body, query, changeReason);
 
   /// The assistant (agent) service, which the gateway serves at `/agent`
   /// beside the API's `/api/v1`. Null when the base URL does not end in

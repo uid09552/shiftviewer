@@ -6,6 +6,8 @@ import 'dart:ui' show Locale;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'secret_store.dart';
+
 /// User-configurable connection + login settings for the shift API.
 @immutable
 class AppSettings {
@@ -117,6 +119,26 @@ class AppSettings {
   String get tokenEndpoint => '${_issuerBase()}/protocol/openid-connect/token';
   String get endSessionEndpoint =>
       '${_issuerBase()}/protocol/openid-connect/logout';
+  String get revocationEndpoint =>
+      '${_issuerBase()}/protocol/openid-connect/revoke';
+
+  /// Where the identity provider sends the browser after ending its session.
+  /// It has to be registered in Keycloak under the client's *Valid post logout
+  /// redirect URIs*. Native apps reuse the login redirect's custom scheme; the
+  /// web build returns to the root of the origin it is served from.
+  String get postLogoutRedirectUri {
+    final redirect = Uri.tryParse(oidcRedirectUri.trim());
+    if (redirect == null || redirect.scheme.isEmpty) return '';
+    if (redirect.scheme == 'http' || redirect.scheme == 'https') {
+      return Uri(
+        scheme: redirect.scheme,
+        host: redirect.host,
+        port: redirect.hasPort ? redirect.port : null,
+        path: '/',
+      ).toString();
+    }
+    return '${redirect.scheme}:/logout';
+  }
 
   String _issuerBase() => oidcIssuer.trim().replaceAll(RegExp(r'/+$'), '');
 
@@ -192,7 +214,19 @@ class AppSettings {
 
 /// Holds [AppSettings] in memory and persists them to a JSON file in the app
 /// documents directory. Notifies listeners on change so the UI can rebuild.
+///
+/// The manual password and bearer token are credentials, so they are kept in
+/// the platform keystore ([SecretStore]) and left out of the JSON file;
+/// values an older version wrote into the file are moved on first load.
 class SettingsController extends ChangeNotifier {
+  SettingsController({SecretStore? secrets}) : _secrets = secrets;
+
+  static const _kPassword = 'settings_password';
+  static const _kBearer = 'settings_bearer_token';
+
+  SecretStore? _secrets;
+  SecretStore get _secretStore => _secrets ??= PlatformSecretStore();
+
   AppSettings _settings = AppSettings.initial();
   bool _loaded = false;
 
@@ -209,7 +243,9 @@ class SettingsController extends ChangeNotifier {
       final file = await _settingsFile();
       if (await file.exists()) {
         final data = jsonDecode(await file.readAsString());
-        _settings = AppSettings.fromJson(data as Map<String, dynamic>);
+        final json = data as Map<String, dynamic>;
+        _settings = AppSettings.fromJson(json);
+        _settings = await _withSecrets(_settings, json);
       }
     } catch (e) {
       debugPrint('Failed to load settings: $e');
@@ -223,10 +259,75 @@ class SettingsController extends ChangeNotifier {
     _settings = settings;
     notifyListeners();
     try {
+      final json = settings.toJson();
+      // A credential stays in the file only if the keystore refused it, so
+      // that it is not lost; otherwise the file carries no secrets.
+      if (await _storeSecret(_kPassword, settings.password)) {
+        json.remove('password');
+      }
+      if (await _storeSecret(_kBearer, settings.bearerToken)) {
+        json.remove('bearerToken');
+      }
       final file = await _settingsFile();
-      await file.writeAsString(jsonEncode(settings.toJson()));
+      await file.writeAsString(jsonEncode(json));
     } catch (e) {
       debugPrint('Failed to save settings: $e');
+    }
+  }
+
+  /// Fills in the password and bearer token from the keystore, and moves any
+  /// still sitting in the settings file (written by an older version) there.
+  Future<AppSettings> _withSecrets(
+    AppSettings loaded,
+    Map<String, dynamic> json,
+  ) async {
+    var password = await _readSecret(_kPassword);
+    var bearer = await _readSecret(_kBearer);
+    var migrated = false;
+    if (password == null && loaded.password.isNotEmpty) {
+      migrated |= await _storeSecret(_kPassword, loaded.password);
+      password = loaded.password;
+    }
+    if (bearer == null && loaded.bearerToken.isNotEmpty) {
+      migrated |= await _storeSecret(_kBearer, loaded.bearerToken);
+      bearer = loaded.bearerToken;
+    }
+    final result = loaded.copyWith(
+      password: password ?? loaded.password,
+      bearerToken: bearer ?? loaded.bearerToken,
+    );
+    if (migrated) {
+      // Rewrite the file without the secrets that now live in the keystore.
+      await save(result);
+    }
+    return result;
+  }
+
+  Future<String?> _readSecret(String key) async {
+    if (kIsWeb) return null;
+    try {
+      final value = await _secretStore.read(key);
+      return (value == null || value.isEmpty) ? null : value;
+    } catch (e) {
+      debugPrint('Failed to read $key from the keystore: $e');
+      return null;
+    }
+  }
+
+  /// Stores (or, when empty, removes) [value]; false if the keystore failed.
+  Future<bool> _storeSecret(String key, String value) async {
+    // The web build keeps no settings file either, so nothing is persisted.
+    if (kIsWeb) return false;
+    try {
+      if (value.isEmpty) {
+        await _secretStore.delete(key);
+      } else {
+        await _secretStore.write(key, value);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Failed to store $key in the keystore: $e');
+      return false;
     }
   }
 }

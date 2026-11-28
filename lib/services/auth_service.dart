@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_client.dart' show TokenUnavailableException;
 import 'app_settings.dart';
 import 'auth_browser.dart';
 import 'token_store.dart';
@@ -185,6 +186,11 @@ class AuthController extends ChangeNotifier {
       _fail('OIDC is not configured. Open settings to set the issuer/client.');
       return;
     }
+    final insecure = _insecureIssuerProblem();
+    if (insecure != null) {
+      _fail(insecure);
+      return;
+    }
     if (kIsWeb) {
       await _webLogin();
     } else if (_isNative) {
@@ -194,7 +200,23 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Signs the user out for real: the local session is dropped at once, then
+  /// the refresh token is revoked and the identity provider's own (SSO) session
+  /// is ended, so signing in again asks for credentials instead of silently
+  /// reusing the browser session — which is what lets a shared device switch
+  /// accounts. Both server-side steps are best effort: with no connection the
+  /// user is still signed out locally.
   Future<void> logout() async {
+    final idToken = _idToken;
+    final refreshToken = _refreshToken;
+    await _clearSession();
+    await _revokeRefreshToken(refreshToken);
+    await _endProviderSession(idToken);
+  }
+
+  /// Forgets the session locally. Also what an expired or refused session
+  /// ends with — no provider round trip there, the session is already over.
+  Future<void> _clearSession() async {
     _refreshTimer?.cancel();
     _refreshTimer = null;
     _accessToken = null;
@@ -203,6 +225,62 @@ class AuthController extends ChangeNotifier {
     _expiry = null;
     await _tokens.clear();
     _setStatus(AuthStatus.unauthenticated);
+  }
+
+  /// Asks the provider to invalidate [refreshToken] (RFC 7009), so a copy that
+  /// outlived the sign-out is worthless.
+  Future<void> _revokeRefreshToken(String? refreshToken) async {
+    if (refreshToken == null || refreshToken.isEmpty) return;
+    if (!_settings.isOidcConfigured) return;
+    try {
+      await _http
+          .post(
+            Uri.parse(_settings.revocationEndpoint),
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: {
+              'client_id': _settings.oidcClientId,
+              'token': refreshToken,
+              'token_type_hint': 'refresh_token',
+            },
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('[auth] token revocation failed (ignored): $e');
+    }
+  }
+
+  /// Ends the Keycloak browser session: a redirect on web, an AppAuth
+  /// end-session request (system browser tab) on native.
+  Future<void> _endProviderSession(String? idToken) async {
+    if (!_settings.isOidcConfigured) return;
+    final postLogout = _settings.postLogoutRedirectUri;
+    try {
+      if (kIsWeb) {
+        if (!_browser.isSupported) return;
+        final uri = Uri.parse(_settings.endSessionEndpoint).replace(
+          queryParameters: {
+            'client_id': _settings.oidcClientId,
+            if (idToken != null && idToken.isNotEmpty)
+              'id_token_hint': idToken,
+            if (postLogout.isNotEmpty) 'post_logout_redirect_uri': postLogout,
+          },
+        );
+        _browser.redirect(uri.toString());
+      } else if (_isNative) {
+        await _appAuth.endSession(
+          EndSessionRequest(
+            idTokenHint: idToken,
+            postLogoutRedirectUrl: postLogout.isEmpty ? null : postLogout,
+            issuer: _settings.oidcIssuer,
+            allowInsecureConnections: false,
+          ),
+        );
+      }
+    } on FlutterAppAuthUserCancelledException {
+      // The user closed the browser tab; the local session is gone regardless.
+    } catch (e) {
+      debugPrint('[auth] provider sign-out failed (ignored): $e');
+    }
   }
 
   /// A currently-valid access token, renewing it from the refresh token first
@@ -215,16 +293,22 @@ class AuthController extends ChangeNotifier {
   /// Returns null only when the session genuinely cannot be continued (no
   /// refresh token, or the server refused it), which is the point at which the
   /// user is sent back to the sign-in page. A renewal that failed for a
-  /// transient reason also yields null, but leaves the session in place so the
-  /// next attempt can succeed.
+  /// transient reason throws [TokenUnavailableException] instead and leaves the
+  /// session in place so the next attempt can succeed — callers must not mistake
+  /// that for "not signed in" and fall back to other credentials.
   Future<String?> validAccessToken({bool forceRefresh = false}) async {
     if (!forceRefresh && _accessTokenValid) return _accessToken;
     if (_refreshToken == null || _refreshToken!.isEmpty) {
       // Nothing left to renew with, so the session really is over.
-      if (_status == AuthStatus.authenticated) await logout();
+      if (_status == AuthStatus.authenticated) await _clearSession();
       return null;
     }
     if (await _refresh()) return _accessToken;
+    // A refused refresh token has already ended the session (status is no
+    // longer authenticated); otherwise the failure was transient.
+    if (_status == AuthStatus.authenticated) {
+      throw const TokenUnavailableException();
+    }
     return null;
   }
 
@@ -239,7 +323,6 @@ class AuthController extends ChangeNotifier {
           _settings.oidcRedirectUri,
           issuer: _settings.oidcIssuer,
           scopes: _settings.scopeList,
-          // Dev backend is served over plain HTTP (e.g. http://10.0.2.2).
           allowInsecureConnections: false,
         ),
       );
@@ -266,8 +349,19 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  /// Release builds only talk to an identity provider over HTTPS: tokens
+  /// must never cross a plain-HTTP link. Debug builds may use a local one.
+  String? _insecureIssuerProblem() {
+    if (!kReleaseMode) return null;
+    final issuer = Uri.tryParse(_settings.oidcIssuer.trim());
+    if (issuer != null && issuer.scheme == 'https') return null;
+    return 'The identity provider must use HTTPS. Check the issuer in settings.';
+  }
+
   Future<bool> _nativeRefresh() async {
     try {
+      final insecure = _insecureIssuerProblem();
+      if (insecure != null) throw StateError(insecure);
       final result = await _appAuth.token(
         TokenRequest(
           _settings.oidcClientId,
@@ -276,7 +370,7 @@ class AuthController extends ChangeNotifier {
           refreshToken: _refreshToken,
           grantType: 'refresh_token',
           scopes: _settings.scopeList,
-          allowInsecureConnections: true,
+          allowInsecureConnections: false,
         ),
       );
       _applyTokenResponse(
@@ -421,7 +515,7 @@ class AuthController extends ChangeNotifier {
         '(${refused ? 'refused, signing out' : 'transient, keeping session'}): '
         '$error');
     if (refused) {
-      await logout();
+      await _clearSession();
     } else if (_status == AuthStatus.authenticated) {
       _armRefreshTimer(_refreshRetryDelay);
     }

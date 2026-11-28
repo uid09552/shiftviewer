@@ -24,6 +24,13 @@
   "openDayView": "Open day view",
   "today": "Today",
   "refresh": "Refresh",
+  "updatedAt": "Updated {time}",
+  "@updatedAt": {
+    "description": "When the roster data was last loaded successfully.",
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "settings": "Settings",
   "previous": "Previous",
   "next": "Next",
@@ -453,6 +460,14 @@
   "admSectionPlanning": "Planning",
   "admSectionConfiguration": "Configuration",
   "admRoster": "Roster",
+  "admReasonTitle": "Reason for change",
+  "admReasonMessage": "This part of the roster is published or locked. Say why you are changing it; the reason is recorded in the audit log.",
+  "admReasonLabel": "Reason",
+  "admReasonConfirm": "Apply change",
+  "admMonthDraft": "Draft",
+  "admMonthPublished": "Published",
+  "admMonthLocked": "Locked",
+  "admMonthLockedError": "This month is locked. Only an admin may change it, and a reason is required.",
   "admRosterHint": "Edit who works what, week by week",
   "admRotations": "Rotations",
   "admRotationsHint": "Recurring rhythms as fixed shifts",

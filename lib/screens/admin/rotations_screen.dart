@@ -413,14 +413,17 @@ class _ApplyRotationScreenState extends State<ApplyRotationScreen>
   Future<void> _run({required bool dryRun}) async {
     setState(() => _busy = true);
     try {
-      final r = await api.applyPattern(
-        widget.pattern.id,
-        employeeIds: _ids,
-        from: _range.start,
-        to: _range.end,
-        offsetStep: _stagger,
-        replaceExisting: _replace,
-        dryRun: dryRun,
+      final r = await ChangeReasonPrompt(context).run(
+        (reason) => api.applyPattern(
+          widget.pattern.id,
+          employeeIds: _ids,
+          from: _range.start,
+          to: _range.end,
+          offsetStep: _stagger,
+          replaceExisting: _replace,
+          dryRun: dryRun,
+          changeReason: reason,
+        ),
       );
       if (!mounted) return;
       if (dryRun) {
@@ -447,7 +450,10 @@ class _ApplyRotationScreenState extends State<ApplyRotationScreen>
     if (!ok) return;
     setState(() => _busy = true);
     try {
-      final n = await api.clearFixed(_ids, _range.start, _range.end);
+      final n = await ChangeReasonPrompt(context).run(
+        (reason) =>
+            api.clearFixed(_ids, _range.start, _range.end, changeReason: reason),
+      );
       if (!mounted) return;
       setState(() => _preview = null);
       showAdminMessage(context, l10n.admCleared(n));
