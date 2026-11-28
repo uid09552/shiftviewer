@@ -24,6 +24,13 @@
   "openDayView": "Open day view",
   "today": "Today",
   "refresh": "Refresh",
+  "updatedAt": "Updated {time}",
+  "@updatedAt": {
+    "description": "When the roster data was last loaded successfully.",
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "settings": "Settings",
   "previous": "Previous",
   "next": "Next",

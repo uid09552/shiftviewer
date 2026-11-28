@@ -182,6 +182,12 @@ abstract class AppLocalizations {
   /// **'Refresh'**
   String get refresh;
 
+  /// When the roster data was last loaded successfully.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated {time}'**
+  String updatedAt(String time);
+
   /// No description provided for @settings.
   ///
   /// In en, this message translates to:

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -33,7 +34,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// The day view opens first: after signing in the question is almost always
   /// "what am I working today", and the calendars are one tap away.
   HomeView _view = HomeView.day;
@@ -66,11 +67,74 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Ceiling on the legend under the month/week calendars.
   static const double _maxLegendShare = 0.45;
 
+  /// The calendar day the screen last knew to be today, so a rollover while
+  /// the app was open or backgrounded can be told from "same day".
+  DateTime _today = dateKey(DateTime.now());
+  Timer? _midnightTimer;
+
+  /// Data older than this is reloaded when the app comes back to the
+  /// foreground; the roster can change while it sits in a pocket.
+  static const Duration _staleAfter = Duration(minutes: 5);
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleMidnight();
     // Load once settings are available.
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeRefresh());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final rolledOver = _rolloverIfNewDay();
+    final updated = context.read<ShiftDataController>().lastUpdated;
+    final stale =
+        updated == null || DateTime.now().difference(updated) > _staleAfter;
+    if (rolledOver || stale) _maybeRefresh();
+    _scheduleMidnight();
+  }
+
+  /// A timer can sleep through midnight while the app is backgrounded, so this
+  /// is re-armed on resume as well.
+  void _scheduleMidnight() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final next = DateTime(now.year, now.month, now.day + 1);
+    _midnightTimer = Timer(next.difference(now) + const Duration(seconds: 1), () {
+      if (!mounted) return;
+      if (_rolloverIfNewDay()) _maybeRefresh();
+      _scheduleMidnight();
+    });
+  }
+
+  /// When the date has changed since the screen last looked, moves the view
+  /// on to the new "today" — but only if it was showing the old one; someone
+  /// who deliberately browsed elsewhere stays where they are. Returns whether
+  /// the date changed.
+  bool _rolloverIfNewDay() {
+    final today = dateKey(DateTime.now());
+    if (today == _today) return false;
+    final previous = _today;
+    _today = today;
+    if (_selectedDay == previous) {
+      setState(() {
+        _selectedDay = today;
+        _anchor = today;
+      });
+    } else {
+      // Still redraw: "today" highlighting in the calendars has moved.
+      setState(() {});
+    }
+    return true;
   }
 
   /// Keeps the data controller aligned with the latest settings, then reloads
@@ -403,8 +467,23 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         );
       case HomeView.wishes:
-        return WishPlannerView(visibleMonth: _anchor, data: data);
+        return _pullToRefresh(
+          WishPlannerView(visibleMonth: _anchor, data: data),
+        );
     }
+  }
+
+  /// Pull-down-to-reload around a list. The list is made scrollable even when
+  /// it is shorter than the screen, so the gesture always works.
+  Widget _pullToRefresh(Widget list) {
+    return RefreshIndicator(
+      onRefresh: _maybeRefresh,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context)
+            .copyWith(physics: const AlwaysScrollableScrollPhysics()),
+        child: list,
+      ),
+    );
   }
 
   /// A calendar over the legend for the day it has selected: tapping a date
@@ -467,7 +546,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: DayDetailSummary(day: _selectedDay, data: data),
         ),
         Expanded(
-          child: ClipRect(child: DayShiftList(day: _selectedDay, data: data)),
+          child: ClipRect(
+            child: _pullToRefresh(DayShiftList(day: _selectedDay, data: data)),
+          ),
         ),
       ],
     );
@@ -539,6 +620,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Range stepper for the active view: ‹ title ›.
   Widget _toolbar(BuildContext context) {
     final l10n = context.l10n;
+    final updated = context.watch<ShiftDataController>().lastUpdated;
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
       child: Row(
@@ -549,12 +631,26 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => _step(-1),
           ),
           Expanded(
-            child: Text(
-              _title(l10n, context.dateLocale),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _title(l10n, context.dateLocale),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if (updated != null)
+                  Text(
+                    l10n.updatedAt(
+                      DateFormat.Hm(context.dateLocale).format(updated),
+                    ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                  ),
+              ],
             ),
           ),
           IconButton(

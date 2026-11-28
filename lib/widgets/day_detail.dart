@@ -443,7 +443,18 @@ class DayShiftList extends StatelessWidget {
     final theme = Theme.of(context);
     final plans = data.allPlansForDay(day);
     if (plans.isEmpty) {
-      return _centeredHint(theme, context.l10n.noShiftsScheduled);
+      // A list rather than a bare centred text, so pulling down to reload
+      // works on an empty day too.
+      return LayoutBuilder(
+        builder: (context, constraints) => ListView(
+          children: [
+            SizedBox(
+              height: constraints.maxHeight.isFinite ? constraints.maxHeight : 200,
+              child: _centeredHint(theme, context.l10n.noShiftsScheduled),
+            ),
+          ],
+        ),
+      );
     }
 
     return ListView(

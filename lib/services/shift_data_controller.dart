@@ -139,6 +139,11 @@ class ShiftDataController extends ChangeNotifier {
 
   bool get loading => _loading;
   DataFailure? get error => _error;
+
+  /// When the roster data last loaded successfully; null until it has. It is
+  /// what a returning user checks to know how old the shown shifts are.
+  DateTime? get lastUpdated => _lastUpdated;
+  DateTime? _lastUpdated;
   bool get isConfigured => _settings.isConfigured;
 
   List<Employee> get employees => List.unmodifiable(_employees);
@@ -469,6 +474,7 @@ class ShiftDataController extends ChangeNotifier {
 
       _loadedFrom = dateKey(from);
       _loadedTo = dateKey(to);
+      _lastUpdated = DateTime.now();
 
       // Drop a selection that no longer exists.
       if (_selectedEmployeeId != null &&

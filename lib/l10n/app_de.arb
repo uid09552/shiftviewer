@@ -18,6 +18,7 @@
   "openDayView": "Tagesansicht öffnen",
   "today": "Heute",
   "refresh": "Aktualisieren",
+  "updatedAt": "Aktualisiert {time}",
   "settings": "Einstellungen",
   "previous": "Zurück",
   "next": "Weiter",

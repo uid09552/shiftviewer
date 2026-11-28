@@ -228,5 +228,19 @@ void main() {
       expect(data.loading, isFalse);
       expect(data.loadedFrom, july.$1);
     });
+
+    test('lastUpdated is stamped by a successful load only', () async {
+      final (data, gates) = setUp();
+      expect(data.lastUpdated, isNull);
+
+      final load = data.refresh(june.$1, june.$2);
+      expect(data.lastUpdated, isNull, reason: 'nothing has arrived yet');
+      gates[_d(june.$1)]!.complete();
+      await load;
+
+      final stamped = data.lastUpdated;
+      expect(stamped, isNotNull);
+      expect(DateTime.now().difference(stamped!).inSeconds, lessThan(5));
+    });
   });
 }

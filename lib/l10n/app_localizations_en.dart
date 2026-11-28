@@ -51,6 +51,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refresh => 'Refresh';
 
   @override
+  String updatedAt(String time) {
+    return 'Updated $time';
+  }
+
+  @override
   String get settings => 'Settings';
 
   @override

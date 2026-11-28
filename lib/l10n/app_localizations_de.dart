@@ -52,6 +52,11 @@ class AppLocalizationsDe extends AppLocalizations {
   String get refresh => 'Aktualisieren';
 
   @override
+  String updatedAt(String time) {
+    return 'Aktualisiert $time';
+  }
+
+  @override
   String get settings => 'Einstellungen';
 
   @override
