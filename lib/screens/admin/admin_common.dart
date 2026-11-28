@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_helpers.dart';
+import '../../models/admin_models.dart';
 import '../../services/admin_api.dart';
 import '../../services/api_client.dart';
 import '../../services/shift_data_controller.dart';
@@ -35,6 +36,12 @@ mixin AdminApiState<T extends StatefulWidget> on State<T> {
 String adminErrorText(AppLocalizations l10n, Object error) {
   if (error is ApiException) {
     final code = error.statusCode;
+    // A locked month refuses non-admins; say so rather than the generic
+    // "your role may not do this".
+    if ((code == 403 || code == 409 || code == 423) &&
+        error.message.toLowerCase().contains('lock')) {
+      return l10n.admMonthLockedError;
+    }
     if (code == 403) return l10n.adminForbidden;
     return code == null ? error.message : l10n.errorWithCode(error.message, code);
   }
@@ -42,11 +49,98 @@ String adminErrorText(AppLocalizations l10n, Object error) {
 }
 
 void showAdminError(BuildContext context, Object error) {
-  if (!context.mounted) return;
+  // The user backed out of the reason prompt: nothing went wrong.
+  if (error is ChangeReasonCancelled || !context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(adminErrorText(context.l10n, error))),
   );
 }
+
+/// Thrown when the user dismisses the "reason for change" prompt, so the
+/// write is abandoned without an error message.
+class ChangeReasonCancelled implements Exception {
+  const ChangeReasonCancelled();
+}
+
+/// Runs roster writes that may need a reason for change.
+///
+/// The first attempt goes out without one. If the server answers `428
+/// reason_required` the user is asked once, and the same write is retried with
+/// the reason. Writes after that in the same action (a multi-day leave, say)
+/// reuse it instead of asking again.
+class ChangeReasonPrompt {
+  ChangeReasonPrompt(this._context);
+
+  final BuildContext _context;
+  String? _reason;
+
+  Future<T> run<T>(Future<T> Function(String? reason) write) async {
+    try {
+      return await write(_reason);
+    } on ApiException catch (e) {
+      if (!e.reasonRequired || !_context.mounted) rethrow;
+      final reason = await askChangeReason(_context);
+      if (reason == null) throw const ChangeReasonCancelled();
+      _reason = reason;
+      return write(reason);
+    }
+  }
+}
+
+/// Asks why a published or locked part of the roster is being changed.
+/// Resolves to the trimmed reason, or null when dismissed.
+Future<String?> askChangeReason(BuildContext context) {
+  final l10n = context.l10n;
+  final controller = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: Text(l10n.admReasonTitle),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.admReasonMessage),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 3,
+              minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                labelText: l10n.admReasonLabel,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: controller.text.trim().isEmpty
+                ? null
+                : () => Navigator.pop(ctx, controller.text.trim()),
+            child: Text(l10n.admReasonConfirm),
+          ),
+        ],
+      ),
+    ),
+  ).whenComplete(controller.dispose);
+}
+
+/// Display name of a roster month's lifecycle state.
+String rosterMonthStatusLabel(AppLocalizations l10n, RosterMonthStatus s) =>
+    switch (s) {
+      RosterMonthStatus.draft => l10n.admMonthDraft,
+      RosterMonthStatus.published => l10n.admMonthPublished,
+      RosterMonthStatus.locked => l10n.admMonthLocked,
+    };
 
 void showAdminMessage(BuildContext context, String message) {
   if (!context.mounted) return;

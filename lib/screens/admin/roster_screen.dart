@@ -30,6 +30,7 @@ class _RosterScreenState extends State<RosterScreen>
   List<Shift> _shifts = [];
   List<Workstation> _workstations = [];
   List<WorkstationClosure> _closures = [];
+  List<RosterMonth> _months = [];
   final Map<String, ConfirmedShiftPlan> _plans = {};
   final Map<String, ShiftWish> _wishes = {};
   String _filter = '';
@@ -71,6 +72,8 @@ class _RosterScreenState extends State<RosterScreen>
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _shifts = r[1] as List<Shift>;
       _workstations = r[2] as List<Workstation>;
+      // Month status is information only: a backend without it still edits.
+      _months = await api.rosterMonths().catchError((_) => <RosterMonth>[]);
       await _loadWeek();
     } catch (e) {
       if (mounted) setState(() => _error = e);
@@ -159,6 +162,56 @@ class _RosterScreenState extends State<RosterScreen>
     }
   }
 
+  RosterMonthStatus _statusOf(DateTime d) {
+    for (final m in _months) {
+      if (m.year == d.year && m.month == d.month) return m.status;
+    }
+    return RosterMonthStatus.draft;
+  }
+
+  /// Lifecycle chip(s) for the month(s) the week falls in, so a planner knows
+  /// before tapping whether edits will ask for a reason.
+  Widget _monthStatus(BuildContext context) {
+    final l10n = context.l10n;
+    final locale = context.dateLocale;
+    final scheme = Theme.of(context).colorScheme;
+    final end = _weekStart.add(const Duration(days: 6));
+    final months = {
+      DateTime(_weekStart.year, _weekStart.month),
+      DateTime(end.year, end.month),
+    }.toList();
+
+    Color colorOf(RosterMonthStatus s) => switch (s) {
+      RosterMonthStatus.draft => scheme.outline,
+      RosterMonthStatus.published => scheme.primary,
+      RosterMonthStatus.locked => scheme.error,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Wrap(
+        spacing: 8,
+        children: [
+          for (final m in months)
+            Chip(
+              visualDensity: VisualDensity.compact,
+              avatar: Icon(
+                _statusOf(m) == RosterMonthStatus.locked
+                    ? Icons.lock_outline
+                    : Icons.circle,
+                size: 14,
+                color: colorOf(_statusOf(m)),
+              ),
+              label: Text(
+                '${DateFormat.MMMM(locale).format(m)}: '
+                '${rosterMonthStatusLabel(l10n, _statusOf(m))}',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -207,6 +260,7 @@ class _RosterScreenState extends State<RosterScreen>
               ),
             ],
           ),
+          _monthStatus(context),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: TextField(
@@ -422,6 +476,9 @@ class _CellEditor extends StatefulWidget {
 }
 
 class _CellEditorState extends State<_CellEditor> {
+  /// Asks for a reason once if the server wants one for this edit.
+  late final ChangeReasonPrompt _reasons = ChangeReasonPrompt(context);
+
   String? _shiftId;
   String? _workstationId;
   String? _absence;
@@ -474,9 +531,13 @@ class _CellEditorState extends State<_CellEditor> {
     final p = widget.plan;
     final working = _absence == null;
     if (p != null && p.isPresent == working) {
-      await api.updatePlan(p.id, working
-          ? {'shift_id': _shiftId, 'workstation_id': _workstationId}
-          : {'is_present': false, 'absence_type': _absence});
+      await _reasons.run((reason) => api.updatePlan(
+        p.id,
+        working
+            ? {'shift_id': _shiftId, 'workstation_id': _workstationId}
+            : {'is_present': false, 'absence_type': _absence},
+        changeReason: reason,
+      ));
       return;
     }
     // Switching between a working day and an absence changes what the row
@@ -484,16 +545,21 @@ class _CellEditorState extends State<_CellEditor> {
     // (employee, date) and replaces the old entry in one guarded write —
     // deleting it first would leave the day empty if the create then failed.
     // (A PUT cannot do this: it cannot clear `absence_type`.)
-    await api.createPlan(
+    await _reasons.run((reason) => api.createPlan(
       widget.employee.id,
       widget.day,
       shiftId: working ? _shiftId : null,
       workstationId: working ? _workstationId : null,
       absenceType: working ? null : _absence,
-    );
+      changeReason: reason,
+    ));
   });
 
-  Future<void> _clear() => _run(() => widget.api.deletePlan(widget.plan!.id));
+  Future<void> _clear() => _run(
+    () => _reasons.run(
+      (reason) => widget.api.deletePlan(widget.plan!.id, changeReason: reason),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {

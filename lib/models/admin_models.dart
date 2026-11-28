@@ -779,3 +779,45 @@ class BackendInfo {
   String get shortCommit =>
       commit.length <= 7 ? commit : commit.substring(0, 7);
 }
+
+/// Lifecycle state of one roster month: planners edit freely in `draft`; once
+/// `published` edits inside the freeze window need a reason; a `locked` month
+/// takes changes from admins only, and always with a reason.
+enum RosterMonthStatus { draft, published, locked }
+
+class RosterMonth {
+  final int year;
+  final int month;
+  final RosterMonthStatus status;
+
+  const RosterMonth({
+    required this.year,
+    required this.month,
+    required this.status,
+  });
+
+  /// Reads one `GET /roster-months` row. The month is `month: "2026-06"` or
+  /// `year` + `month` as numbers; a row that does not parse yields null.
+  static RosterMonth? tryParse(Map<String, dynamic> json) {
+    int? year;
+    int? month;
+    final m = json['month'];
+    if (m is String) {
+      final match = RegExp(r'^(\d{4})-(\d{1,2})').firstMatch(m);
+      if (match != null) {
+        year = int.parse(match.group(1)!);
+        month = int.parse(match.group(2)!);
+      }
+    } else if (m is num) {
+      month = m.toInt();
+      year = (json['year'] as num?)?.toInt();
+    }
+    if (year == null || month == null) return null;
+    final status = switch ('${json['status']}'.toLowerCase()) {
+      'published' => RosterMonthStatus.published,
+      'locked' => RosterMonthStatus.locked,
+      _ => RosterMonthStatus.draft,
+    };
+    return RosterMonth(year: year, month: month, status: status);
+  }
+}

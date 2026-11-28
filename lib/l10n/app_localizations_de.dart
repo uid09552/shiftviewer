@@ -801,6 +801,32 @@ class AppLocalizationsDe extends AppLocalizations {
   String get admRoster => 'Dienstplan';
 
   @override
+  String get admReasonTitle => 'Grund der Änderung';
+
+  @override
+  String get admReasonMessage =>
+      'Dieser Teil des Dienstplans ist veröffentlicht oder gesperrt. Geben Sie an, warum Sie ihn ändern; der Grund wird im Änderungsprotokoll festgehalten.';
+
+  @override
+  String get admReasonLabel => 'Grund';
+
+  @override
+  String get admReasonConfirm => 'Änderung durchführen';
+
+  @override
+  String get admMonthDraft => 'Entwurf';
+
+  @override
+  String get admMonthPublished => 'Veröffentlicht';
+
+  @override
+  String get admMonthLocked => 'Gesperrt';
+
+  @override
+  String get admMonthLockedError =>
+      'Dieser Monat ist gesperrt. Nur Admins dürfen ihn ändern, und ein Grund ist erforderlich.';
+
+  @override
   String get admRosterHint => 'Wer arbeitet was – Woche für Woche bearbeiten';
 
   @override
