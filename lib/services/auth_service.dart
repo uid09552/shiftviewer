@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_client.dart' show TokenUnavailableException;
 import 'app_settings.dart';
 import 'auth_browser.dart';
 import 'token_store.dart';
@@ -215,8 +216,9 @@ class AuthController extends ChangeNotifier {
   /// Returns null only when the session genuinely cannot be continued (no
   /// refresh token, or the server refused it), which is the point at which the
   /// user is sent back to the sign-in page. A renewal that failed for a
-  /// transient reason also yields null, but leaves the session in place so the
-  /// next attempt can succeed.
+  /// transient reason throws [TokenUnavailableException] instead and leaves the
+  /// session in place so the next attempt can succeed — callers must not mistake
+  /// that for "not signed in" and fall back to other credentials.
   Future<String?> validAccessToken({bool forceRefresh = false}) async {
     if (!forceRefresh && _accessTokenValid) return _accessToken;
     if (_refreshToken == null || _refreshToken!.isEmpty) {
@@ -225,6 +227,11 @@ class AuthController extends ChangeNotifier {
       return null;
     }
     if (await _refresh()) return _accessToken;
+    // A refused refresh token has already ended the session (status is no
+    // longer authenticated); otherwise the failure was transient.
+    if (_status == AuthStatus.authenticated) {
+      throw const TokenUnavailableException();
+    }
     return null;
   }
 

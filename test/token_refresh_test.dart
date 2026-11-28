@@ -130,11 +130,13 @@ void main() {
       addTearDown(auth.dispose);
       appAuth.error = Exception('Connection closed before full header');
 
-      final token = await auth.validAccessToken(forceRefresh: true);
-
       // Nothing to hand out right now, but the session survives: the next
-      // attempt can still renew it.
-      expect(token, isNull);
+      // attempt can still renew it. The caller is told so, rather than being
+      // handed null (which would read as "not signed in").
+      await expectLater(
+        auth.validAccessToken(forceRefresh: true),
+        throwsA(isA<TokenUnavailableException>()),
+      );
       expect(auth.status, AuthStatus.authenticated);
       expect(store.cleared, isFalse);
       expect(store.data['refresh_token'], 'stored-refresh');
@@ -264,6 +266,34 @@ void main() {
         throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401)),
       );
       expect(requests, 1);
+    });
+
+    test('a transient token failure fails locally, never anonymously', () async {
+      var requests = 0;
+      final client = MockClient((request) async {
+        requests++;
+        return http.Response('', 401);
+      });
+
+      // Stale manual credentials must not stand in for the signed-in user.
+      final api = ShiftApiClient(
+        const AppSettings(
+          baseUrl: 'https://example.test/api/v1',
+          bearerToken: 'manual',
+          username: 'someone',
+        ),
+        client: client,
+        tokenProvider: ({bool forceRefresh = false}) async =>
+            throw const TokenUnavailableException(),
+      );
+
+      await expectLater(
+        api.listShifts(),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'status', isNull)
+            .having((e) => e.message, 'message', contains('Network error'))),
+      );
+      expect(requests, 0);
     });
   });
 }
