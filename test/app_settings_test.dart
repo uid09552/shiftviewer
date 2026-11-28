@@ -54,4 +54,19 @@ void main() {
       ..['oidcScopes'] = 'offline_access openid';
     expect(AppSettings.fromJson(stored).oidcScopes, 'offline_access openid');
   });
+
+  test('sign-out endpoints and post-logout redirect follow the settings', () {
+    const native = AppSettings(
+      oidcIssuer: 'https://idp.test/auth/realms/shift/',
+      oidcRedirectUri: 'org.khmhmh.shiftviewer:/oauth2redirect',
+    );
+    expect(native.revocationEndpoint,
+        'https://idp.test/auth/realms/shift/protocol/openid-connect/revoke');
+    expect(native.postLogoutRedirectUri, 'org.khmhmh.shiftviewer:/logout');
+
+    const web = AppSettings(
+      oidcRedirectUri: 'http://localhost:8900/auth/callback',
+    );
+    expect(web.postLogoutRedirectUri, 'http://localhost:8900/');
+  });
 }

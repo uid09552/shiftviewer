@@ -46,6 +46,15 @@ class _FakeAppAuth extends FlutterAppAuth {
 
   var tokenCalls = 0;
 
+  /// The end-session requests received, newest last.
+  final endSessions = <EndSessionRequest>[];
+
+  @override
+  Future<EndSessionResponse> endSession(EndSessionRequest request) async {
+    endSessions.add(request);
+    return EndSessionResponse(null);
+  }
+
   @override
   Future<TokenResponse> token(TokenRequest request) async {
     tokenCalls++;
@@ -176,6 +185,69 @@ void main() {
 
       expect(await auth.validAccessToken(forceRefresh: true), isNull);
       expect(auth.status, AuthStatus.unauthenticated);
+    });
+  });
+
+  group('AuthController sign-out', () {
+    Future<(AuthController, _FakeAppAuth, _MemoryTokenStore, List<http.Request>)>
+        signedIn({Object? revokeError}) async {
+      final requests = <http.Request>[];
+      final store = _MemoryTokenStore({
+        ..._storedTokens(expiresIn: const Duration(hours: 1)),
+        'id_token': 'id-token-123',
+      });
+      final appAuth = _FakeAppAuth();
+      final auth = AuthController(
+        SettingsController(),
+        tokenStore: store,
+        appAuth: appAuth,
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          if (revokeError != null) throw revokeError;
+          return http.Response('', 200);
+        }),
+      );
+      addTearDown(auth.dispose);
+      await auth.initialize();
+      return (auth, appAuth, store, requests);
+    }
+
+    test('revokes the refresh token and ends the provider session', () async {
+      final (auth, appAuth, store, requests) = await signedIn();
+
+      await auth.logout();
+
+      expect(auth.status, AuthStatus.unauthenticated);
+      expect(store.cleared, isTrue);
+      expect(requests, hasLength(1));
+      expect(requests.single.url.path, endsWith('/protocol/openid-connect/revoke'));
+      expect(requests.single.bodyFields['token'], 'stored-refresh');
+      expect(requests.single.bodyFields['token_type_hint'], 'refresh_token');
+      expect(appAuth.endSessions, hasLength(1));
+      expect(appAuth.endSessions.single.idTokenHint, 'id-token-123');
+    });
+
+    test('still signs out locally when the provider cannot be reached',
+        () async {
+      final (auth, _, store, _) =
+          await signedIn(revokeError: Exception('offline'));
+
+      await auth.logout();
+
+      expect(auth.status, AuthStatus.unauthenticated);
+      expect(store.cleared, isTrue);
+    });
+
+    test('an expired session does not open the provider logout page',
+        () async {
+      final (auth, appAuth, _, requests) = await signedIn();
+      appAuth.error = Exception('invalid_grant: token is not active');
+
+      await auth.validAccessToken(forceRefresh: true);
+
+      expect(auth.status, AuthStatus.unauthenticated);
+      expect(appAuth.endSessions, isEmpty);
+      expect(requests, isEmpty);
     });
   });
 

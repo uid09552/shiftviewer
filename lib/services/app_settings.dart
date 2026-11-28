@@ -117,6 +117,26 @@ class AppSettings {
   String get tokenEndpoint => '${_issuerBase()}/protocol/openid-connect/token';
   String get endSessionEndpoint =>
       '${_issuerBase()}/protocol/openid-connect/logout';
+  String get revocationEndpoint =>
+      '${_issuerBase()}/protocol/openid-connect/revoke';
+
+  /// Where the identity provider sends the browser after ending its session.
+  /// It has to be registered in Keycloak under the client's *Valid post logout
+  /// redirect URIs*. Native apps reuse the login redirect's custom scheme; the
+  /// web build returns to the root of the origin it is served from.
+  String get postLogoutRedirectUri {
+    final redirect = Uri.tryParse(oidcRedirectUri.trim());
+    if (redirect == null || redirect.scheme.isEmpty) return '';
+    if (redirect.scheme == 'http' || redirect.scheme == 'https') {
+      return Uri(
+        scheme: redirect.scheme,
+        host: redirect.host,
+        port: redirect.hasPort ? redirect.port : null,
+        path: '/',
+      ).toString();
+    }
+    return '${redirect.scheme}:/logout';
+  }
 
   String _issuerBase() => oidcIssuer.trim().replaceAll(RegExp(r'/+$'), '');
 
